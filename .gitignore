@@ -8,6 +8,7 @@ node_modules/
 npm-debug.log
 
 test/server/config.js
-test/server/app.pid
 
 data/
+
+dump.rdb
