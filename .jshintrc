@@ -1,0 +1,24 @@
+{
+    "browser"   : true,
+    "jquery"    : true,
+    "node"      : true,
+    "devel"     : true,
+    "esnext"    : true,
+
+    "curly"     : true,
+    "eqeqeq"    : true,
+    "indent"    : 4,
+    "latedef"   : true,
+    "maxlen"    : 120,
+    "newcap"    : true,
+    "quotmark"  : "single",
+    "undef"     : true,
+    "unused"    : false,
+
+    "eqnull"    : true,
+
+    "globals"   : {
+        "angular" : true,
+        "CONFIG"  : true
+    }
+}
