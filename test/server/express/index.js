@@ -4,10 +4,43 @@ let cookieParser = require('cookie-parser');
 let multer = require('multer');
 let session = require('express-session');
 let morgan = require('morgan');
+let CASAuthentication = require('cas-authentication');
 
 export default function(mongo, redisClient) {
 
     let app = express();
+
+    // Set up third party Express middleware.
+    app.use(bodyParser.urlencoded({ extended: false }));
+    app.use(bodyParser.json());
+    app.use(cookieParser('secret'));
+    app.use(multer({ dest: CONFIG.EXPRESS.TEMP_DIR }));
+    app.use(session({
+        resave:            false,
+        saveUninitialized: true,
+        secret:            CONFIG.EXPRESS.SESSION_SECRET,
+        store:             mongo.store
+    }));
+    app.use(morgan('combined', { stream: CONFIG.LOGGER.ACCESS }));
+
+    morgan.token('remote-user', (req) => req.session.cas_user);
+
+    // Set up CAS.
+    var devUrl = 'https://im-dev.seas.harvard.edu';
+    var prodUrl = CONFIG.EXPRESS.CAS_SERVICE_URL;
+    var cas = new CASAuthentication({
+        cas_version:     '1.0',
+        cas_url:         'https://www.pin1.harvard.edu/cas',
+        service_url:     CONFIG.EXPRESS.CAS_DEV_MODE ? devUrl : prodUrl,
+        is_dev_mode:     CONFIG.EXPRESS.CAS_DEV_MODE,
+        dev_mode_user:   CONFIG.EXPRESS.CAS_DEV_USER,
+        session_name:    'cas_user',
+        destroy_session: true
+    });
+
+    // Set up custom Express middleware.
+    /*app.use(errorHandler);*/
+    /*app.use(validateSession);*/
 
     // More Express configuration.
     app.enable('trust proxy');
@@ -16,7 +49,7 @@ export default function(mongo, redisClient) {
     app.set('port', CONFIG.SERVER.PORT);
 
     // Set up app routes.
-    require('./routes')(app, mongo);
+    require('./routes')(app, cas, mongo);
 
     return app;
 }

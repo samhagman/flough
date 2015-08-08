@@ -18,7 +18,11 @@ let CONFIG = {
     EXPRESS: {
         DOMAIN:          'localhost',
         DEV_BUILD:       true,
+        CAS_DEV_MODE:    true,
+        CAS_DEV_USER:    '10953529',
+        CAS_SERVICE_URL: '',
         SESSION_SECRET:  'my super secret',
+        STATIC_DIR:      null,
         TEMP_DIR:        '/var/tmp/'
     },
     SERVER:  {
@@ -32,12 +36,17 @@ let CONFIG = {
         PID_FILE:      path.join(__dirname, 'app.pid')
     },
     APP:     {
-        DEFAULT_ROLE: {}
+        JOI_OPTS: {
+            abortEarly:   false,
+            allowUnknown: true
+        }
     },
     LOGGER:  {}
 };
 
 // Dynamic settings.
+let staticFolder = (CONFIG.EXPRESS.DEV_BUILD ? 'build' : 'compile');
+CONFIG.EXPRESS.STATIC_DIR = path.join(__dirname, '../..', staticFolder);
 CONFIG.EXPRESS.API_URL = `http://${CONFIG.EXPRESS.DOMAIN}${(CONFIG.EXPRESS.DEV_BUILD ? `:${CONFIG.SERVER.PORT}` : '')}`;
 
 

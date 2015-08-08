@@ -3,8 +3,16 @@ let http = require('http');
 // Load server configuration.
 global.CONFIG = require('./config.js');
 
+// Create global server scoped require
+global.requireServer = function(string) {
+    const path = `${__dirname}/${string}`;
+    return require(path);
+};
+
 // Load Logger singleton.
 let Logger = require('./lib/Logger');
+
+//process.title = `${CONFIG.SERVER.PROCESS_TITLE}_WORKER`;
 
 // Redis setup.
 let redisClient = require('./redis')();
@@ -21,10 +29,8 @@ redisClient.on('connect', function() {
             // Express setup.
             let app = require('./express')(mongo, redisClient);
 
-            // Kue setup.
-            let [kueApp, queue] = require('../../lib/kue')(app, mongo.connection, redisClient);
-
-            app.use(kueApp);
+            // Workflows Setup
+            let workflows = require('./workflows')(redisClient, mongo.connection, app);
 
             // Server setup.
             let server = http.createServer(app);

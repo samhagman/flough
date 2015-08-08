@@ -1,14 +1,14 @@
+const Logger = require('../../lib/Logger');
 const kue = require('kue');
 const Promise = require('bluebird');
 
 export default function setupRoutes(app, mongoCon, redisClient) {
 
-    let searchKue = require('../lib/search')(redisClient);
     //
     //setTimeout(() => {
     //    searchKue('TASK')
-    //        .then((jobs) => console.log(jobs))
-    //        .catch((err) => console.log(err));
+    //        .then((jobs) => Logger.error(jobs))
+    //        .catch((err) => Logger.error(err));
     //
     //}, 7000);
 
