@@ -164,8 +164,7 @@ These special events are emitted in the following format: `some_identifier:some_
 
 
 
-## Running Tests
-
+## Running Tests 
 - Install [Node.js](http://nodejs.org/).
 
 - Install [Bower](http://bower.io/) and [Gulp](http://gulpjs.com/) globally:
