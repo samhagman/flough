@@ -2,12 +2,10 @@ const kue = require('kue');
 const events = require('events');
 const Promise = require('bluebird');
 
-export default function floughBuilder(redisClient, mongoCon, expressApp = null) {
-
+export default function floughBuilder() {
 
     let Flow = {
         init(o) {
-
 
             class FloughAPI {
 
@@ -19,12 +17,13 @@ export default function floughBuilder(redisClient, mongoCon, expressApp = null) 
             FloughAPI.prototype.__proto__ = events.EventEmitter.prototype;
             FloughAPI.prototype.o = setupDefaults(o);
 
-            return setupKue(FloughAPI.prototype.o, expressApp)
+            return setupKue(FloughAPI.prototype.o)
                 .then((queue) => {
+                    return [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ];
+                }).spread((queue, storage, redisClient) => {
 
-                    // TODO extract out redisCon and mongoCon into options argument
-                    let flowAPIs = require('./lib/flowAPI')(queue, mongoCon, FloughAPI.prototype.o);
-                    let jobAPIs = require('./lib/jobAPI')(queue, mongoCon, FloughAPI.prototype.o);
+                    let flowAPIs = require('./lib/flowAPI')(queue, storage, FloughAPI.prototype.o);
+                    let jobAPIs = require('./lib/jobAPI')(queue, storage, FloughAPI.prototype.o);
 
                     for (let api of Object.keys(flowAPIs)) {
                         FloughAPI.prototype[ api ] = flowAPIs[ api ];
@@ -38,7 +37,7 @@ export default function floughBuilder(redisClient, mongoCon, expressApp = null) 
 
                     let FloughInstance = new FloughAPI();
 
-                    return (attachEvents(queue, FloughInstance, FloughAPI.prototype.o));
+                    return attachEvents(queue, FloughInstance, FloughAPI.prototype.o);
                 });
 
         }
@@ -72,7 +71,59 @@ function setupDefaults(o) {
         }
     }
 
+
     return o;
+}
+
+
+function setupRedis(FloughAPI) {
+    let o = FloughAPI.prototype.o;
+
+
+    let redisClient;
+    if (o.redis && o.redis.type === 'supplyOptions') {
+        try {
+            let socket = o.redis.socket;
+            let port = !socket ? (o.redis.port || 6379) : null;
+            let host = !socket ? (o.redis.host || '127.0.0.1') : null;
+            redisClient = redis.createClient(socket || port, host, o.redis.options);
+            if (o.redis.auth) {
+                redisClient.auth(o.redis.auth);
+            }
+            if (o.redis.db) {
+                redisClient.select(o.redis.db);
+            }
+        }
+        catch (e) {
+            throw new Error(`Supplied redis options or supplied redis client.`);
+        }
+    }
+    else if (o.redis && o.redis.type === 'supplyClient') {
+        redisClient = o.redis.client;
+    }
+    else {
+        throw new Error(`Must specify both a options.redis.type of either 'supplyOptions' or 'supplyClient' and also pass
+            in the required options or client.  Check the README for more information.`);
+    }
+
+    FloughAPI.prototype.redisClient = redisClient;
+
+    return redisClient;
+}
+
+function setupStorage(FloughAPI) {
+    let o = FloughAPI.prototype.o;
+    switch (o.storage.type) {
+        case 'mongoose' || 'mongodb':
+        {
+            FloughAPI.prototype.storageClient = require('./lib/storage/mongodb')(o);
+            return FloughAPI.prototype.storageClient;
+        }
+        default:
+        {
+            throw new Error(`Invalid storage type (options.storage.type): ${o.storage.type}`);
+        }
+    }
 }
 
 /**
@@ -84,7 +135,9 @@ function setupDefaults(o) {
  */
 function loggerBuilder(devMode, passedLogger, advanced) {
 
+    // Production
     if (!devMode) {
+        // TODO Decide what should be logged if Flough is running in production mode.
         return {
             warn(toBeLogged) {
             },
@@ -96,9 +149,11 @@ function loggerBuilder(devMode, passedLogger, advanced) {
             }
         };
     }
+    // User passed a logger that supports: .warn(), .info(), .error(), .debug()
     else if (!!passedLogger && advanced) {
         return passedLogger;
     }
+    // User passed a logger, but that logger does not support different logging functions.
     else if (!!passedLogger && !advanced) {
 
         return {
@@ -116,19 +171,20 @@ function loggerBuilder(devMode, passedLogger, advanced) {
             }
         };
     }
+    // User passed no logger so just output to the console.
     else {
         return {
             warn(toBeLogged) {
-                console.log(`[WARN] ${toBeLogged}`);
+                console.log(`[FLOUGH-WARN] ${toBeLogged}`);
             },
             info(toBeLogged) {
-                console.log(`[INFO] ${toBeLogged}`);
+                console.log(`[FLOUGH-INFO] ${toBeLogged}`);
             },
             error(toBeLogged) {
-                console.log(`[ERROR] ${toBeLogged}`);
+                console.log(`[FLOUGH-ERROR] ${toBeLogged}`);
             },
             debug(toBeLogged) {
-                console.log(`[DEBUG] ${toBeLogged}`);
+                console.log(`[FLOUGH-DEBUG] ${toBeLogged}`);
             }
         };
     }
@@ -148,9 +204,9 @@ function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job enqueue', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data.uuid}:enqueue`, job);
+                    FloughInstance.emit(`${job.data._uuid}:enqueue`, job);
                     FloughInstance.emit(`${job.type}:enqueue`, job);
-                    FloughInstance.emit(`${job.data.flowId}:enqueue`, job);
+                    FloughInstance.emit(`${job.data._flowId}:enqueue`, job);
                 });
             })
             .on('job complete', (id, result) => {
@@ -160,9 +216,9 @@ function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job complete', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data.uuid}:complete`, job);
+                    FloughInstance.emit(`${job.data._uuid}:complete`, job);
                     FloughInstance.emit(`${job.type}:complete`, job);
-                    FloughInstance.emit(`${job.data.flowId}:complete`, job);
+                    FloughInstance.emit(`${job.data._flowId}:complete`, job);
                 });
             })
             .on('job failed', (id, errorMessage) => {
@@ -172,45 +228,45 @@ function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job failed', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data.uuid}:failed`, job);
+                    FloughInstance.emit(`${job.data._uuid}:failed`, job);
                     FloughInstance.emit(`${job.type}:failed`, job);
-                    FloughInstance.emit(`${job.data.flowId}:failed`, job);
+                    FloughInstance.emit(`${job.data._flowId}:failed`, job);
                 });
             })
             .on('job promotion', () => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job promotion', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data.uuid}:promotion`, job);
+                    FloughInstance.emit(`${job.data._uuid}:promotion`, job);
                     FloughInstance.emit(`${job.type}:promotion`, job);
-                    FloughInstance.emit(`${job.data.flowId}:promotion`, job);
+                    FloughInstance.emit(`${job.data._flowId}:promotion`, job);
                 });
             })
             .on('job progress', () => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job progress', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data.uuid}:progress`, job);
+                    FloughInstance.emit(`${job.data._uuid}:progress`, job);
                     FloughInstance.emit(`${job.type}:progress`, job);
-                    FloughInstance.emit(`${job.data.flowId}:progress`, job);
+                    FloughInstance.emit(`${job.data._flowId}:progress`, job);
                 });
             })
             .on('job failed attempt', () => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job failed attempt', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data.uuid}:failed attempt`, job);
+                    FloughInstance.emit(`${job.data._uuid}:failed attempt`, job);
                     FloughInstance.emit(`${job.type}:failed attempt`, job);
-                    FloughInstance.emit(`${job.data.flowId}:failed attempt`, job);
+                    FloughInstance.emit(`${job.data._flowId}:failed attempt`, job);
                 });
             })
             .on('job remove', () => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job remove', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data.uuid}:remove`, job);
+                    FloughInstance.emit(`${job.data._uuid}:remove`, job);
                     FloughInstance.emit(`${job.type}:remove`, job);
-                    FloughInstance.emit(`${job.data.flowId}:remove`, job);
+                    FloughInstance.emit(`${job.data._flowId}:remove`, job);
                 });
             })
         ;
@@ -258,30 +314,38 @@ function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
 
 /**
  *
- * @param FloughInstance
- * @param queueName
  * @param logger
  * @param searchKue
- * @param devMode
  * @param cleanKueOnStartup
+ * @param jobEvents
+ * @param [redis]
  * @param [expressApp]
  */
-function setupKue({queueName, logger, searchKue, devMode, cleanKueOnStartup, returnJobOnEvents, jobEvents}, expressApp) {
+function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expressApp}) {
 
     return new Promise((resolve, reject) => {
-        let internalLogger = logger.func;
+        let Logger = logger.func;
 
-        // Read notice below about how important it is that this gets called here first before anywhere else in the node app.
-        let queue = kue.createQueue({
+        let kueOptions = {
             disableSearch: !searchKue,
             jobEvents:     jobEvents
-        });
+        };
+
+        // If the user has supplied redis options, use them instead of Kue's defaults.
+        if (redis && redis.type === 'supplyOptions') {
+            // Remove extra field before passing to kue to avoid any conflict
+            delete redis.type;
+            kueOptions.redis = redis;
+        }
+
+        // Read notice below about how important it is that this gets called here first before anywhere else in the node app.
+        let queue = kue.createQueue(kueOptions);
 
         /**
          * ****IMPORTANT NOTICE****
          * For the Express route that searches Kue to be turned on it is important that kue.createQueue({disableSearch: false})
          * be called FIRST before calling expressApp.use(kue.app).  That is why if a Flough user wishes to use this functionality
-         * they should pass in both the express app and the kue app into the initial require('flough') call so that Flough can
+         * they should pass in both the express app and the kue app into the Flough.init() call so that Flough can
          * explicitly make sure that this function call order is correct.
          *
          * Also important to note is that ANY non-default Kue options for kue.createQueue() (not just the search option) must
@@ -290,7 +354,6 @@ function setupKue({queueName, logger, searchKue, devMode, cleanKueOnStartup, ret
         if (expressApp) {
             expressApp.use(kue.app);
         }
-
 
         let numInactiveJobs;
         let numActiveJobs;
@@ -357,7 +420,7 @@ function setupKue({queueName, logger, searchKue, devMode, cleanKueOnStartup, ret
                                     //internalLogger.error(`INACTIVE*&*&*&*&*&*&`);
                                     //internalLogger.error(job.data);
                                     // If this job is a helper job and is still queued and it was part of a flow, remove it.
-                                    if (job.type.substr(0, 3) === 'job' && job.state() === 'inactive' && job.data.flowId !== 'NoFlow') {
+                                    if (job.type.substr(0, 3) === 'job' && job.state() === 'inactive' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
                                     }
                                     jobsCleaned('inactive');
@@ -371,7 +434,7 @@ function setupKue({queueName, logger, searchKue, devMode, cleanKueOnStartup, ret
                                     //internalLogger.error(`ACTIVE*&*&*&*&*&*&`);
                                     //internalLogger.error(job.data);
                                     // If this job is a helper job of a flow, remove it.
-                                    if (job.type.substr(0, 3) === 'job' && job.data.flowId !== 'NoFlow') {
+                                    if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
                                     }
                                     // If this job represents a process, restart it.
@@ -389,11 +452,11 @@ function setupKue({queueName, logger, searchKue, devMode, cleanKueOnStartup, ret
                                     //internalLogger.error(`FAILED*&*&*&*&*&*&`);
                                     //internalLogger.error(job.data);
                                     if (!job) {
-                                        internalLogger.warn(`Attempted to restart job with id ${id}, but job information was no longer in redis.`);
+                                        Logger.warn(`Attempted to restart job with id ${id}, but job information was no longer in redis.`);
                                     }
                                     // If this job represents a flow or it is a solo job, restart it by setting it be inactive.
-                                    else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data.flowId === 'NoFlow')) {
-                                        internalLogger.info(`Restarting job: ${job.id}`);
+                                    else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data._flowId === 'NoFlow')) {
+                                        Logger.info(`Restarting job: ${job.id}`);
                                         job.inactive();
                                     }
                                     jobsCleaned('failed');

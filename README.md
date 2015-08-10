@@ -1,11 +1,15 @@
 # Flough - A job orchestration framework.
 
-
 ## About
 
 Flough was created as a way to quickly build, update, and maintain chains of jobs.  Flough uses [Kue](https://github.com/Automattic/kue) and MongoDB under the hood (MongoDB will be replaceable with any other persistent storage in a future version).  More information about the internal workings of Flough can be found in [STRUCTURE.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
 
-## Usage
+## Table of Contents
+
+TODO
+
+
+## "Quick" Start
 
 There are two main building blocks to Flough: Jobs and Flows.
 *Jobs* are functions that are queued into [Kue](https://github.com/Automattic/kue) and are generally single purpose.
@@ -47,7 +51,7 @@ When registering a job you get three parameters injected into your function: `jo
 
 `job` is a slightly modified [Kue](https://github.com/Automattic/kue) job and still retains all functions available to that object; look at the [Kue](https://github.com/Automattic/kue) documentation for more about job events, job progress, job priorities, etc.
 
-The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the `job.jobLogger(job.data.uuid, 'My job log message')` function which is an upgraded version `job.log('My message')` that will save messages to both Redis and MongoDB.  More information can be found in [Structure.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
+The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the `job.jobLogger(job.data._uuid, 'My job log message')` function which is an upgraded version `job.log('My message')` that will save messages to both Redis and MongoDB.  More information can be found in [Structure.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
 
 `done` is a function that is called to let Flough know that your job has completed.  Any JSON-_able_ object passed to this function will
 be inserted into the `job.data._results` object and the previous job's result will be easily reachable at `job.data._lastResult`.
@@ -96,10 +100,10 @@ Which will start the flow with a type of `get_html_and_tweet_it` that was regist
 // Assuming Flough has been initialized
 Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
-    flow.init()
+    flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
         .job(2, 'tweet_something', { handle: '@hagmansam' })
-        .done()
+        .end()
         .then(function(flow) {
             done();
         })
@@ -110,20 +114,28 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 });
 ```
 Several things to note about this flow:
+
 - You can pass options to a flow as the second parameter to `.startFlow()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
 
-- The injected `flow` must be initialized with `.init()` and then ended with a `.done()` after all `.job()`s have been called on the flow.
+- The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s have been called on the flow.
 
 - `flow.job()` is the same as `.startJob()` except it takes a number as its first parameter which is its *step* number.  More on this later.
 
-- `.done()` returns a promise which will resolve when all the jobs have completed and injects the flow instance itself into the function.
+- `.end()` returns a promise which will resolve when all the jobs have completed and injects the flow instance itself into the function.
 
-- Because `.done()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
+- Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
 
 ### Initializing a Flough Instance
 
 TODO
+
+Topics
+- General Options
+- Redis
+https://github.com/Automattic/kue#redis-connection-settings
+- MongoDB/Mongoose
+- Logger
 
 ## Additional Features
 
@@ -131,11 +143,11 @@ TODO
 
 Example:
 ```js
-flow.init()
+flow.start()
     .job(1, 'read_a_file')
     .job(1, 'send_an_email)
     .job(2, 'write_a_file')
-    .done()
+    .end()
 ```
 _Note: `.job()` and `.startJob()` do not require a data object to be passed in._
 
@@ -154,14 +166,39 @@ But even better is that Flows have some special tricks when they restart:
 
 ### Flough Events
 
-The `Flough` instance, once initialized, will emit some events.
+The `Flough` instance, once initialized, will emit two categories of events:
 
 1. `Flough` will emit all events that the [Kue queue](https://github.com/Automattic/kue#queue-events) would emit.
 
 2. `Flough` will also emit a bunch of special events that allow you to listen for specific jobs, specific types of jobs, or specific flows:
 
-These special events are emitted in the following format: `some_identifier:some_event` where `some_identifier` can be `job.data.uuid`, `job.type` or `job.data.flowId` and `some_event` can be one of [Kue's job events](https://github.com/Automattic/kue#job-events).
+These special events are emitted in the following format: `some_identifier:some_event` where `some_identifier` can be `job.data._uuid`, `job.type` or `job.data._flowId` and `some_event` can be one of [Kue's job events](https://github.com/Automattic/kue#job-events).
 
+
+### Flough Searching
+
+If when you initialize `Flough` you pass the option `searchKue: true` then a `Flough.search()` promise function will become available.  This function uses the [reds](https://github.com/tj/reds) under the hood and exposes just the `.query()` method of that library.
+
+To use `Flough.search()` you do something like this:
+
+```js
+
+// Assuming Flough has been initialized
+Flough.search('term1 term2 term3')
+		.then(function(jobsArray) {
+				console.log(jobsArray) // Prints an array of job objects
+		})
+		.catch(function(err) {
+				console.log(err) // Prints an error from .search()
+		});
+
+```
+
+What `.search()` does is takes a string with space-separated search terms inside and looks for jobs that contain *ALL* of the search terms (the terms don't all need to appear in the same field, just at least once somewhere in the job's data) in any of the job's fields.
+
+To perform a search where you want all jobs that *contain at least one of the search terms* you can pass `true` as the second argument like so:
+`Flough.search(string, true)`
+This will use the `.type('or')` functionality of [reds](https://github.com/tj/reds).
 
 # Tests
 
