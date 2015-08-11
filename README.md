@@ -6,20 +6,20 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 
 ## Table of Contents
 
-### ["Quick" Start](https://github.com/samhagman/flough#quick-start)
+### ["Quick" Start](https://github.com/samhagman/flough#quick-start-1)
 - [Jobs](https://github.com/samhagman/flough#jobs)
 - [Flows](https://github.com/samhagman/flough#flows)
 
-### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance)
+### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
 - TODO
 
-### [Additional Features](https://github.com/samhagman/flough#additional-features)
+### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
 - [Substeps](https://github.com/samhagman/flough#substeps)
 - [Flow/Job Restarts](https://github.com/samhagman/flough#flowjob-restarts)
 - [Flough Events](https://github.com/samhagman/flough#flough-events)
 - [Flough Searching](https://github.com/samhagman/flough#flough-searching)
 
-### [Tests](https://github.com/samhagman/flough#tests)
+### [Tests](https://github.com/samhagman/flough#tests-1)
 - TODO
 
 
