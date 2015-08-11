@@ -6,7 +6,21 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 
 ## Table of Contents
 
-TODO
+### ["Quick" Start](https://github.com/samhagman/flough#quick-start)
+- [Jobs](https://github.com/samhagman/flough#jobs)
+- [Flows](https://github.com/samhagman/flough#flows)
+
+### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance)
+- TODO
+
+### [Additional Features](https://github.com/samhagman/flough#additional-features)
+- [Substeps](https://github.com/samhagman/flough#substeps)
+- [Flow/Job Restarts](https://github.com/samhagman/flough#flowjob-restarts)
+- [Flough Events](https://github.com/samhagman/flough#flough-events)
+- [Flough Searching](https://github.com/samhagman/flough#flough-searching)
+
+### [Tests](https://github.com/samhagman/flough#tests)
+- TODO
 
 
 ## "Quick" Start
@@ -126,7 +140,7 @@ Several things to note about this flow:
 - Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
 
-### Initializing a Flough Instance
+## Initializing a Flough Instance
 
 TODO
 
@@ -177,7 +191,7 @@ These special events are emitted in the following format: `some_identifier:some_
 
 ### Flough Searching
 
-If when you initialize `Flough` you pass the option `searchKue: true` then a `Flough.search()` promise function will become available.  This function uses the [reds](https://github.com/tj/reds) under the hood and exposes just the `.query()` method of that library.
+If when intializing `Flough` you pass the option `searchKue: true`, then a `Flough.search()` promise function will become available.  This function uses [reds](https://github.com/tj/reds) under the hood and exposes just the `.query()` method of that library.
 
 To use `Flough.search()` you do something like this:
 
@@ -185,18 +199,18 @@ To use `Flough.search()` you do something like this:
 
 // Assuming Flough has been initialized
 Flough.search('term1 term2 term3')
-		.then(function(jobsArray) {
-				console.log(jobsArray) // Prints an array of job objects
-		})
-		.catch(function(err) {
-				console.log(err) // Prints an error from .search()
-		});
+        .then(function(jobsArray) {
+                console.log(jobsArray) // Prints an array of job objects
+        })
+        .catch(function(err) {
+                console.log(err) // Prints an error from .search()
+        });
 
 ```
 
-What `.search()` does is takes a string with space-separated search terms inside and looks for jobs that contain *ALL* of the search terms (the terms don't all need to appear in the same field, just at least once somewhere in the job's data) in any of the job's fields.
+What `.search()` does is takes a string with space-separated search terms inside and looks for jobs that contain **ALL** of the search terms.  Note that the terms don't all need to appear in the same field, just at least once somewhere in the job.
 
-To perform a search where you want all jobs that *contain at least one of the search terms* you can pass `true` as the second argument like so:
+To perform a search where you want all jobs that **contain at least one of the search terms** you can pass `true` as the second argument like so:
 `Flough.search(string, true)`
 This will use the `.type('or')` functionality of [reds](https://github.com/tj/reds).
 
