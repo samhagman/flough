@@ -209,18 +209,54 @@ var options = {
 
 ### searchKue
 
+`searchKue` is off by default. Turning on this option will allow you to search for jobs and flows that are in the Kue queue.  It is off by default because it can cause some problems if you have a high number of jobs and don't manually clean Redis often.  [Read more about the downsides here](https://github.com/Automattic/kue/issues/412)
+
 ### devMode
+
+`devMode` is on by default.  `devMode` being on has two side effects:
+1. Flough will generate logs using the [logger](https://github.com/samhagman/flough/#logger).
+2. Errors thrown by user registered jobs/flows will not be caught, which will cause the process to crash and allow you to debug your jobs/flows much easier.
+
+The flipside is that if `devMode` is turned off Flough will generate only generate error logs and errors will be caught and logged, but the process will not crash.
 
 ### cleanKueOnStartup
 
+`cleanKueOnStartup` is on by default.  This option is highly recommended to keep on.  On server startup this option does two things:
+1. Solo jobs (jobs not started by a flow) and flow jobs (jobs that represent a flow) are restarted if they failed or did not complete before the server was shutdown previously.
+2. Helper jobs (jobs started by a flow) of any status are removed from the queue because they will be restarted by the flow when the flow is restarted.
+
+Unless you want to tweak which jobs are removed and which jobs are restarted after digging into the code a bit, then keep this option on.
+
 ### returnJobOnEvents
+
+`returnJobOnEvents` is on by default.  When turned on, the custom events emitted by Flough (no the Kue events) will also attach the entire Job itself to the event.  You might want to turn this off if you don't need the entire job and if you are listening to these events on a large scale.
 
 ### logger
 
+`logger` is optional and has two fields.  The first field is `func` which allows you to inject your own logger to be used by Flough.  This will allow you to handle log messages (single argument, always a string) in whatever way you want.  The second field is `advanced` which lets you tell Flough whether or not your logger function supports ALL four of these functions:
+- `logger.info()`
+- `logger.debug()`
+- `logger.warn()`
+- `logger.error()`
+
+which Flough will to help give more useful and intuitive log messages when developing.  Also `logger.error` is used even when `devMode` is turned off to log errors thrown by user registered jobs/flows.
+
 ### redis
-https://github.com/Automattic/kue#redis-connection-settings
+
+`redis` allows you to control the redis connetion Flough will use and has two types. (The `'default'` type will be used if you don't choose a type and attempts to connect to Redis using its defaults)
+1. `redis.type = 'supplyClient'` is where you create your own Redis connection and pass it directly to Flough onto `options.redis.client`.
+
+2. `redis.type = 'supplyOptions'` is where you supply Flough with the connection options to connect to Redis.  The available options can be found [here](https://github.com/Automattic/kue#redis-connection-settings).
 
 ### storage
+
+`storage` allows you to give Flough the persistent storage options you want to use for Flough.  Right now only MongoDB is supported.
+
+`storage` types:
+
+- 'options.storage.type = 'mongo'` looks exactly like what's shown in the [full options example](https://github.com/samhagman/flough#intializing-a-flough-instance).
+
+- `options.storage.type = 'mongoose'` allows you to hand a mongoose connection (via `mongoose.createConnection()`) directly to Flough on `options.storage.connection`.
 
 ## Additional Features
 
