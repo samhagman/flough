@@ -1,27 +1,13 @@
 # Flough - A job orchestration framework.
 
+### README Contents
+
+TODO
+
+
 ## About
 
-Flough was created as a way to quickly build, update, and maintain chains of jobs.  Flough uses [Kue](https://github.com/Automattic/kue) and MongoDB under the hood.  More information about the internal workings of Flough can be found in [STRUCTURE.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
-
-## Table of Contents
-
-### ["Quick" Start](https://github.com/samhagman/flough#quick-start-1)
-- [Jobs](https://github.com/samhagman/flough#jobs)
-- [Flows](https://github.com/samhagman/flough#flows)
-
-### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
-- TODO
-
-### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
-- [Substeps](https://github.com/samhagman/flough#substeps)
-- [Flow/Job Restarts](https://github.com/samhagman/flough#flowjob-restarts)
-- [Flough Events](https://github.com/samhagman/flough#flough-events)
-- [Flough Searching](https://github.com/samhagman/flough#flough-searching)
-
-### [Tests](https://github.com/samhagman/flough#tests-1)
-- TODO
-
+Flough was created as a way to quickly build, update, and maintain chains of jobs.  Flough uses [Kue](https://github.com/Automattic/kue) and MongoDB under the hood (MongoDB will be replaceable with any other persistent storage in a future version).  More information about the internal workings of Flough can be found in [STRUCTURE.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
 
 ## "Quick" Start
 
@@ -128,7 +114,6 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 });
 ```
 Several things to note about this flow:
-
 - You can pass options to a flow as the second parameter to `.startFlow()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
 
 - The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s have been called on the flow.
@@ -140,7 +125,7 @@ Several things to note about this flow:
 - Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
 
-## Initializing a Flough Instance
+### Initializing a Flough Instance
 
 TODO
 
@@ -180,7 +165,7 @@ But even better is that Flows have some special tricks when they restart:
 
 ### Flough Events
 
-The `Flough` instance, once initialized, will emit two categories of events:
+The `Flough` instance, once initialized, will emit some events.
 
 1. `Flough` will emit all events that the [Kue queue](https://github.com/Automattic/kue#queue-events) would emit.
 
@@ -190,29 +175,6 @@ These special events are emitted in the following format: `some_identifier:some_
 
 
 ### Flough Searching
-
-If when intializing `Flough` you pass the option `searchKue: true`, then a `Flough.search()` promise function will become available.  This function uses [reds](https://github.com/tj/reds) under the hood and exposes just the `.query()` method of that library.
-
-To use `Flough.search()` you do something like this:
-
-```js
-
-// Assuming Flough has been initialized
-Flough.search('term1 term2 term3')
-        .then(function(jobsArray) {
-                console.log(jobsArray) // Prints an array of job objects
-        })
-        .catch(function(err) {
-                console.log(err) // Prints an error from .search()
-        });
-
-```
-
-What `.search()` does is takes a string with space-separated search terms inside and looks for jobs that contain **ALL** of the search terms.  Note that the terms don't all need to appear in the same field, just at least once somewhere in the job.
-
-To perform a search where you want all jobs that **contain at least one of the search terms** you can pass `true` as the second argument like so:
-`Flough.search(string, true)`
-This will use the `.type('or')` functionality of [reds](https://github.com/tj/reds).
 
 # Tests
 
