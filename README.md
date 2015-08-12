@@ -1,13 +1,35 @@
 # Flough - A job orchestration framework.
 
-### README Contents
-
-TODO
-
-
 ## About
 
-Flough was created as a way to quickly build, update, and maintain chains of jobs.  Flough uses [Kue](https://github.com/Automattic/kue) and MongoDB under the hood (MongoDB will be replaceable with any other persistent storage in a future version).  More information about the internal workings of Flough can be found in [STRUCTURE.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
+Flough was created as a way to quickly build, update, and maintain chains of jobs.  Flough uses [Kue](https://github.com/Automattic/kue) and MongoDB under the hood.  More information about the internal workings of Flough can be found in [STRUCTURE.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
+
+## Table of Contents
+
+### ["Quick" Start](https://github.com/samhagman/flough#quick-start-1)
+- [Basic Initialization](https://github.com/samhagman/flough#basic-initialization)
+- [Jobs](https://github.com/samhagman/flough#jobs)
+- [Flows](https://github.com/samhagman/flough#flows)
+
+### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
+Options
+- [searchKue](https://github.com/Automattic/kue#searchkue)
+- [devMode](https://github.com/Automattic/kue#devmode)
+- [cleanKueOnStartup](https://github.com/Automattic/kue#cleankueonstartup)
+- [returnJobOnEvents](https://github.com/Automattic/kue#returnjobonevents)
+- [logger](https://github.com/Automattic/kue#logger)
+- [redis](https://github.com/Automattic/kue#redis)
+- [storage](https://github.com/Automattic/kue#storage)
+
+### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
+- [Substeps](https://github.com/samhagman/flough#substeps)
+- [Flow/Job Restarts](https://github.com/samhagman/flough#flowjob-restarts)
+- [Flough Events](https://github.com/samhagman/flough#flough-events)
+- [Flough Searching](https://github.com/samhagman/flough#flough-searching)
+
+### ~~[Tests](https://github.com/samhagman/flough#tests-1)~~
+- TODO
+
 
 ## "Quick" Start
 
@@ -15,11 +37,35 @@ There are two main building blocks to Flough: Jobs and Flows.
 *Jobs* are functions that are queued into [Kue](https://github.com/Automattic/kue) and are generally single purpose.
 *Flows* are chains of jobs that are grouped into steps and substeps.
 
+### Basic Initialization
+
+Before beginning to build Jobs and Flows we need to initialize a Flough instance.  I assume that you have already installed MongoDB, that it is running, that you have created a database called `flough`, and have created a user that has 'readWrite' access to it.  This also crucially assumes that Redis is installed and is using the Redis default settings. With all that said, here is the most basic initialization:
+
+```node
+    FloughBuilder.init({
+        storage: {
+            type: 'mongo',
+            uri: 'mongodb://127.0.0.1:27017/flough', // Default_MongoDB_URL/flough
+            options: {
+                db:     { native_parser: true },
+                server: { poolSize: 5 },
+                user:   'baseUser', // Whatever the user you made
+                pass:   'basePwd'
+            }
+        }
+    })
+    .then(function(Flough) {
+        // Flough === Flough Instance
+    });
+```
+
+Once you have a `Flough` instance created you can begin building!  Checkout [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1) for more initialization options.
+
 ### Jobs
 
 A job is started like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.startJob('get_website_html', { url: 'samhagman.com' }).then(function(job) { job.save(); }));
 ```
@@ -27,7 +73,7 @@ Yeah I know the usage here is a little wonky but it is what it is for now.  `job
 
 This would start a job with a type of `get_website_html` which had been _previously_ registered like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.registerJob('get_website_html', function(job, done, error) {
 
@@ -64,7 +110,7 @@ I am going to use a completely useful example of wanting to get a website's HTML
 
 Before showing off a flow lets register another job so we can chain them together in a flow:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.registerJob('tweet_something', function(job, done, error) {
     
@@ -89,14 +135,14 @@ With that out of the way...
 
 A flow is started like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.startFlow('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
 ```
 
 Which will start the flow with a type of `get_html_and_tweet_it` that was registered like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
@@ -114,6 +160,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 });
 ```
 Several things to note about this flow:
+
 - You can pass options to a flow as the second parameter to `.startFlow()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
 
 - The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s have been called on the flow.
@@ -125,23 +172,62 @@ Several things to note about this flow:
 - Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
 
-### Initializing a Flough Instance
+## Initializing a Flough Instance
 
-TODO
+Here is an example of a full options object with **the defaults shown**:
 
-Topics
-- General Options
-- Redis
+```node
+var options = {
+    searchKue: false,
+    devMode: true,
+    cleanKueOnStartup: true,
+    returnJobOnEvents: true,
+
+    logger: {
+        func: console.log,
+        advanced: false
+    },
+    
+    redis: {
+        type: 'default',
+        host: '127.0.0.1',
+        port: 6379
+    },
+    
+    storage: {
+        type: 'mongo',
+        uri: 'mongodb://127.0.0.1:27017/flough', // Default_MongoDB_URL/flough
+        options: {
+            db:     { native_parser: true },
+            server: { poolSize: 5 },
+            user:   'baseUser', // Whatever the user you made
+            pass:   'basePwd'
+        }
+    }
+}
+```
+
+### searchKue
+
+### devMode
+
+### cleanKueOnStartup
+
+### returnJobOnEvents
+
+### logger
+
+### redis
 https://github.com/Automattic/kue#redis-connection-settings
-- MongoDB/Mongoose
-- Logger
+
+### storage
 
 ## Additional Features
 
 ### Substeps
 
 Example:
-```js
+```node
 flow.start()
     .job(1, 'read_a_file')
     .job(1, 'send_an_email)
@@ -165,7 +251,7 @@ But even better is that Flows have some special tricks when they restart:
 
 ### Flough Events
 
-The `Flough` instance, once initialized, will emit some events.
+The `Flough` instance, once initialized, will emit two categories of events:
 
 1. `Flough` will emit all events that the [Kue queue](https://github.com/Automattic/kue#queue-events) would emit.
 
@@ -175,6 +261,29 @@ These special events are emitted in the following format: `some_identifier:some_
 
 
 ### Flough Searching
+
+If when intializing `Flough` you pass the option `searchKue: true`, then a `Flough.search()` promise function will become available.  This function uses [reds](https://github.com/tj/reds) under the hood and exposes just the `.query()` method of that library.
+
+To use `Flough.search()` you do something like this:
+
+```node
+
+// Assuming Flough has been initialized
+Flough.search('term1 term2 term3')
+        .then(function(jobsArray) {
+                console.log(jobsArray) // Prints an array of job objects
+        })
+        .catch(function(err) {
+                console.log(err) // Prints an error from .search()
+        });
+
+```
+
+What `.search()` does is takes a string with space-separated search terms inside and looks for jobs that contain **ALL** of the search terms.  Note that the terms don't all need to appear in the same field, just at least once somewhere in the job.
+
+To perform a search where you want all jobs that **contain at least one of the search terms** you can pass `true` as the second argument like so:
+`Flough.search(string, true)`
+This will use the `.type('or')` functionality of [reds](https://github.com/tj/reds).
 
 # Tests
 

@@ -1,6 +1,7 @@
 const kue = require('kue');
 const events = require('events');
 const Promise = require('bluebird');
+const redis = require('redis');
 
 /**
  * Returns the FloughBuilder object, which just has one function: init(o);
@@ -106,7 +107,7 @@ function setupDefaults(o) {
  */
 function setupRedis(FloughAPI) {
     let o = FloughAPI.prototype.o;
-
+    FloughAPI.prototype.o.redis.type = FloughAPI.prototype.o.redis.type ? FloughAPI.prototype.o.redis.type : 'default';
     let redisClient;
 
     // If user has passed Redis options
@@ -131,9 +132,15 @@ function setupRedis(FloughAPI) {
     else if (o.redis && o.redis.type === 'supplyClient') {
         redisClient = o.redis.client;
     }
-    else {
-        throw new Error(`Must specify both a options.redis.type of either 'supplyOptions' or 'supplyClient' and also pass
-            in the required options or client.  Check the README for more information.`);
+    else if (o.redis.type === 'default') {
+        try {
+            let port = 6379;
+            let host = '127.0.0.1';
+            redisClient = redis.createClient(port, host);
+        }
+        catch (e) {
+            throw new Error(`Supplied redis options or supplied redis client.`);
+        }
     }
 
     // Attach redis client directly to the Flough Class
