@@ -9,7 +9,8 @@
     "test:client": "npm run gulp -- test:client",
     "test:server": "npm run gulp -- test:server",
     "start:mongodb": "mongod --replSet test --dbpath ./data/",
-    "start:redis": "redis-server"
+    "start:redis": "redis-server",
+    "prepublish": "babel -d /"
   },
   "author": "Sam Hagman <samuel.hagman@gmail.com>",
   "testling": {
