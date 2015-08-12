@@ -38,6 +38,12 @@ There are two main building blocks to Flough: Jobs and Flows.
 *Jobs* are functions that are queued into [Kue](https://github.com/Automattic/kue) and are generally single purpose.
 *Flows* are chains of jobs that are grouped into steps and substeps.
 
+### Installation
+
+Flough is available as an [NPM module](https://www.npmjs.com/package/flough).
+
+`npm install --save flough`
+
 ### Basic Initialization
 
 Before beginning to build Jobs and Flows we need to initialize a Flough instance.  I assume that you have already installed MongoDB, that it is running, that you have created a database called `flough`, and have created a user that has 'readWrite' access to it.  This also crucially assumes that Redis is installed and is using the Redis default settings. With all that said, here is the most basic initialization:
