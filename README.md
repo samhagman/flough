@@ -7,11 +7,19 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 ## Table of Contents
 
 ### ["Quick" Start](https://github.com/samhagman/flough#quick-start-1)
+- [Basic Initialization](https://github.com/samhagman/flough#basic-initialization)
 - [Jobs](https://github.com/samhagman/flough#jobs)
 - [Flows](https://github.com/samhagman/flough#flows)
 
 ### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
-- TODO
+Options
+- [searchKue](https://github.com/Automattic/kue#searchkue)
+- [devMode](https://github.com/Automattic/kue#devmode)
+- [cleanKueOnStartup](https://github.com/Automattic/kue#cleankueonstartup)
+- [returnJobOnEvents](https://github.com/Automattic/kue#returnjobonevents)
+- [logger](https://github.com/Automattic/kue#logger)
+- [redis](https://github.com/Automattic/kue#redis)
+- [storage](https://github.com/Automattic/kue#storage)
 
 ### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
 - [Substeps](https://github.com/samhagman/flough#substeps)
@@ -19,7 +27,7 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 - [Flough Events](https://github.com/samhagman/flough#flough-events)
 - [Flough Searching](https://github.com/samhagman/flough#flough-searching)
 
-### [Tests](https://github.com/samhagman/flough#tests-1)
+### ~~[Tests](https://github.com/samhagman/flough#tests-1)~~
 - TODO
 
 
@@ -29,11 +37,35 @@ There are two main building blocks to Flough: Jobs and Flows.
 *Jobs* are functions that are queued into [Kue](https://github.com/Automattic/kue) and are generally single purpose.
 *Flows* are chains of jobs that are grouped into steps and substeps.
 
+### Basic Initialization
+
+Before beginning to build Jobs and Flows we need to initialize a Flough instance.  I assume that you have already installed MongoDB, that it is running, that you have created a database called `flough`, and have created a user that has 'readWrite' access to it.  This also crucially assumes that Redis is installed and is using the Redis default settings. With all that said, here is the most basic initialization:
+
+```node
+    FloughBuilder.init({
+        storage: {
+            type: 'mongo',
+            uri: 'mongodb://127.0.0.1:27017/flough', // Default_MongoDB_URL/flough
+            options: {
+                db:     { native_parser: true },
+                server: { poolSize: 5 },
+                user:   'baseUser', // Whatever the user you made
+                pass:   'basePwd'
+            }
+        }
+    })
+    .then(function(Flough) {
+        // Flough === Flough Instance
+    });
+```
+
+Once you have a `Flough` instance created you can begin building!  Checkout [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1) for more initialization options.
+
 ### Jobs
 
 A job is started like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.startJob('get_website_html', { url: 'samhagman.com' }).then(function(job) { job.save(); }));
 ```
@@ -41,7 +73,7 @@ Yeah I know the usage here is a little wonky but it is what it is for now.  `job
 
 This would start a job with a type of `get_website_html` which had been _previously_ registered like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.registerJob('get_website_html', function(job, done, error) {
 
@@ -78,7 +110,7 @@ I am going to use a completely useful example of wanting to get a website's HTML
 
 Before showing off a flow lets register another job so we can chain them together in a flow:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.registerJob('tweet_something', function(job, done, error) {
     
@@ -103,14 +135,14 @@ With that out of the way...
 
 A flow is started like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.startFlow('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
 ```
 
 Which will start the flow with a type of `get_html_and_tweet_it` that was registered like so:
 
-```js
+```node
 // Assuming Flough has been initialized
 Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
@@ -142,21 +174,60 @@ Several things to note about this flow:
 
 ## Initializing a Flough Instance
 
-TODO
+Here is an example of a full options object with **the defaults shown**:
 
-Topics
-- General Options
-- Redis
+```node
+var options = {
+    searchKue: false,
+    devMode: true,
+    cleanKueOnStartup: true,
+    returnJobOnEvents: true,
+
+    logger: {
+        func: console.log,
+        advanced: false
+    },
+    
+    redis: {
+        type: 'default',
+        host: '127.0.0.1',
+        port: 6379
+    },
+    
+    storage: {
+        type: 'mongo',
+        uri: 'mongodb://127.0.0.1:27017/flough', // Default_MongoDB_URL/flough
+        options: {
+            db:     { native_parser: true },
+            server: { poolSize: 5 },
+            user:   'baseUser', // Whatever the user you made
+            pass:   'basePwd'
+        }
+    }
+}
+```
+
+### searchKue
+
+### devMode
+
+### cleanKueOnStartup
+
+### returnJobOnEvents
+
+### logger
+
+### redis
 https://github.com/Automattic/kue#redis-connection-settings
-- MongoDB/Mongoose
-- Logger
+
+### storage
 
 ## Additional Features
 
 ### Substeps
 
 Example:
-```js
+```node
 flow.start()
     .job(1, 'read_a_file')
     .job(1, 'send_an_email)
@@ -195,7 +266,7 @@ If when intializing `Flough` you pass the option `searchKue: true`, then a `Flou
 
 To use `Flough.search()` you do something like this:
 
-```js
+```node
 
 // Assuming Flough has been initialized
 Flough.search('term1 term2 term3')

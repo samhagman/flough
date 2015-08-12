@@ -1,60 +1,85 @@
 const kue = require('kue');
 const events = require('events');
 const Promise = require('bluebird');
+const redis = require('redis');
 
+/**
+ * Returns the FloughBuilder object, which just has one function: init(o);
+ * @returns {*}
+ */
 export default function floughBuilder() {
 
-    let Flow = {
+    return {
+        // Initialize a Flough instance using the passed options
         init(o) {
 
+            // Base class that inherits from the event emitter class
             class FloughAPI {
 
                 constructor() {
                     events.EventEmitter.call(this);
                 }
             }
-
             FloughAPI.prototype.__proto__ = events.EventEmitter.prototype;
+
+            // Setup defaults
             FloughAPI.prototype.o = setupDefaults(o);
 
+            // Setup Kue queue
             return setupKue(FloughAPI.prototype.o)
                 .then((queue) => {
+                    // Setup and attach storage and Redis clients to Flough Class
                     return [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ];
                 }).spread((queue, storage, redisClient) => {
 
+                    // Setup and attach the APIs for Flows and Jobs
                     let flowAPIs = require('./lib/flowAPI')(queue, storage, FloughAPI.prototype.o);
                     let jobAPIs = require('./lib/jobAPI')(queue, storage, FloughAPI.prototype.o);
-
                     for (let api of Object.keys(flowAPIs)) {
                         FloughAPI.prototype[ api ] = flowAPIs[ api ];
                     }
-
                     for (let api of Object.keys(jobAPIs)) {
                         FloughAPI.prototype[ api ] = jobAPIs[ api ];
                     }
 
-                    FloughAPI.prototype.searchKue = require('./lib/searcher')(queue, redisClient, FloughAPI.prototype.o);
+                    // Setup search functionality for Flough Class
+                    FloughAPI.prototype.search = require('./lib/searcher')(queue, redisClient, FloughAPI.prototype.o);
 
+                    // Create a Flough Instance
                     let FloughInstance = new FloughAPI();
 
+                    // Attach event functionality to Flough Instance and return the modified Flough Instance
                     return attachEvents(queue, FloughInstance, FloughAPI.prototype.o);
                 });
 
         }
     };
 
-    return Flow;
-
 }
 
 
+/**
+ * Sets up the default parameters for the generic option fields.  Storage, Redis, and Searcher specific options are
+ * handled in their respective setup functions.
+ * @param o
+ * @returns {*}
+ */
 function setupDefaults(o) {
-    o.queueName = o.queueName || 'Flough';
-    o.searchKue = o.searchKue !== false;
+    // Should Kue's queue be setup with search functionality enabled?
+    o.searchKue = o.searchKue === true;
+
+    // Is this application being launched for development (AKA not production mode)?
     o.devMode = o.devMode !== false;
+
+    // Should we clean up Kue and auto-restart jobs automatically, or does the user take care of it themselves?
     o.cleanKueOnStartup = o.cleanKueOnStartup !== false;
+
+    // Each time an event fires, should we return the entire job along with the event? (Causes a Redis lookup to occur)
     o.returnJobOnEvents = o.returnJobOnEvents !== false;
-    o.jobEvents = o.jobEvents !== false;
+
+    // TODO allow job events to be turned off
+    //o.jobEvents = o.jobEvents !== false;
+    o.jobEvents = true;
 
     // If user provides logger, but it is simple
     if (o.logger && !o.logger.advanced) {
@@ -71,16 +96,21 @@ function setupDefaults(o) {
         }
     }
 
-
     return o;
 }
 
 
+/**
+ * Setup Redis
+ * @param FloughAPI
+ * @returns {*}
+ */
 function setupRedis(FloughAPI) {
     let o = FloughAPI.prototype.o;
-
-
+    FloughAPI.prototype.o.redis.type = FloughAPI.prototype.o.redis.type ? FloughAPI.prototype.o.redis.type : 'default';
     let redisClient;
+
+    // If user has passed Redis options
     if (o.redis && o.redis.type === 'supplyOptions') {
         try {
             let socket = o.redis.socket;
@@ -98,19 +128,34 @@ function setupRedis(FloughAPI) {
             throw new Error(`Supplied redis options or supplied redis client.`);
         }
     }
+    // If user has passed Redis client
     else if (o.redis && o.redis.type === 'supplyClient') {
         redisClient = o.redis.client;
     }
-    else {
-        throw new Error(`Must specify both a options.redis.type of either 'supplyOptions' or 'supplyClient' and also pass
-            in the required options or client.  Check the README for more information.`);
+    else if (o.redis.type === 'default') {
+        try {
+            let port = 6379;
+            let host = '127.0.0.1';
+            redisClient = redis.createClient(port, host);
+        }
+        catch (e) {
+            throw new Error(`Supplied redis options or supplied redis client.`);
+        }
     }
 
+    // Attach redis client directly to the Flough Class
     FloughAPI.prototype.redisClient = redisClient;
 
     return redisClient;
 }
 
+
+/**
+ * Setup Storage
+ * Storage encompasses any persistent storage choice, eventually more than just MongoDB
+ * @param FloughAPI
+ * @returns {*}
+ */
 function setupStorage(FloughAPI) {
     let o = FloughAPI.prototype.o;
     switch (o.storage.type) {
@@ -127,10 +172,12 @@ function setupStorage(FloughAPI) {
 }
 
 /**
- *
- * @param devMode
- * @param [passedLogger]
- * @param [advanced]
+ * Builds a logger function for use within Flough.
+ * This logger will be used mostly for development purposes so that Jobs and Flows can be tracked throughout their
+ * lifetime.
+ * @param {Boolean} devMode - If devMode is off, disable Logger.
+ * @param {Function} [passedLogger] - A function to be used for logging inside of Flough
+ * @param {boolean} [advanced] - A logger is advanced if it supports separate functions for .warn(), .info(), .error(), and .debug()
  * @returns {{warn, info, error, debug}}
  */
 function loggerBuilder(devMode, passedLogger, advanced) {
@@ -191,6 +238,14 @@ function loggerBuilder(devMode, passedLogger, advanced) {
 
 }
 
+/**
+ * Make the Flough Instance listen on Kue queue events and then emit both copies of those events and other custom events.
+ * @param {Object} queue - Kue queue
+ * @param {Object} FloughInstance - An instance of the FloughAPI Class
+ * @param {Boolean} returnJobOnEvents - Should Flough emit additional events (beyond Kue copies) that have full job attached?
+ * @param {Object} logger - Flough Internal Logging Function
+ * @returns {*}
+ */
 function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
 
     let internalLogger = logger.func;
@@ -201,11 +256,19 @@ function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
             .on('job enqueue', (id, type) => {
                 internalLogger.info(`[FLOUGH][${id}][${type}] - QUEUED`);
 
+                // Take all of Kue's passed arguments and emit them ourselves with the same event string
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job enqueue', ...args);
+
+                // Retrieve the job with the given id and emit custom events with the job attached
                 kue.Job.get(id, (err, job) => {
+                    // Event prefixed by the job's uuid
                     FloughInstance.emit(`${job.data._uuid}:enqueue`, job);
+
+                    // Event prefixed by the job's type
                     FloughInstance.emit(`${job.type}:enqueue`, job);
+
+                    // Event prefixed by the job's Flow ID
                     FloughInstance.emit(`${job.data._flowId}:enqueue`, job);
                 });
             })
@@ -313,13 +376,14 @@ function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
 }
 
 /**
- *
- * @param logger
- * @param searchKue
- * @param cleanKueOnStartup
- * @param jobEvents
- * @param [redis]
- * @param [expressApp]
+ * Setup the Kue queue.
+ * @param {Object} logger - internal logging function
+ * @param {Boolean} searchKue - Should the Kue queue be searchable? (Adds overhead to Kue queue)
+ * @param {Boolean} cleanKueOnStartup - Should the Kue queue be cleaned on server restart?
+ * @param {Boolean} jobEvents - Should the Kue queue create jobs that emit events, or only rely on the queue's events?
+ * @param {Object} [redis] - If the user supplied Redis options, use them for setting up Kue queue
+ * @param {Object} [expressApp] - If user passed in an express app, then use it to enable Kue's interface
+ * @returns {bluebird|exports|module.exports}
  */
 function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expressApp}) {
 
@@ -400,7 +464,9 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
         // TODO add error handling to all these err(s)
         if (cleanKueOnStartup) {
             /**
-             * This handles bootstrapping the Queue when the server is restarted
+             * This handles bootstrapping the Queue when the server is restarted by
+             * A. Removing helper jobs (inside Flows), they will be restarted by the Flow they belong to.
+             * B. Setting leftover solo jobs (NOT inside Flows) and Flow jobs (jobs that track a Flow) as inactive, which will cause Kue to restart them
              */
             queue.inactive((err, inactiveJobIds) => {
                 queue.active((err, activeJobIds) => {
@@ -416,9 +482,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                             inactiveJobIds.forEach((id) => {
                                 kue.Job.get(id, (err, job) => {
 
-                                    // TODO remove this stuff
-                                    //internalLogger.error(`INACTIVE*&*&*&*&*&*&`);
-                                    //internalLogger.error(job.data);
+                                    /* A. */
                                     // If this job is a helper job and is still queued and it was part of a flow, remove it.
                                     if (job.type.substr(0, 3) === 'job' && job.state() === 'inactive' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
@@ -430,13 +494,13 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                             // Cleanup the active jobs
                             activeJobIds.forEach((id) => {
                                 kue.Job.get(id, (err, job) => {
-                                    // TODO remove this stuff
-                                    //internalLogger.error(`ACTIVE*&*&*&*&*&*&`);
-                                    //internalLogger.error(job.data);
+
+                                    /* A. */
                                     // If this job is a helper job of a flow, remove it.
                                     if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
                                     }
+                                    /* B. */
                                     // If this job represents a process, restart it.
                                     else {
                                         job.inactive();
@@ -448,12 +512,11 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                             // Restart any process jobs that were failed because the Queue gracefully shutdown
                             failedJobIds.forEach((id) => {
                                 kue.Job.get(id, (err, job) => {
-                                    // TODO remove this stuff
-                                    //internalLogger.error(`FAILED*&*&*&*&*&*&`);
-                                    //internalLogger.error(job.data);
+
                                     if (!job) {
                                         Logger.warn(`Attempted to restart job with id ${id}, but job information was no longer in redis.`);
                                     }
+                                    /* B. */
                                     // If this job represents a flow or it is a solo job, restart it by setting it be inactive.
                                     else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data._flowId === 'NoFlow')) {
                                         Logger.info(`Restarting job: ${job.id}`);
@@ -487,6 +550,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
 
 
         /*
+         TODO
          The below code allows you to restore the queue from Mongo, would only be needed if Redis db was completely wiped
          away while there were still active jobs that were running.  Not sure where to place this code.
          */
