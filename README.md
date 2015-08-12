@@ -14,13 +14,13 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 
 ### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
 Options
-- [searchKue](https://github.com/Automattic/kue#searchkue)
-- [devMode](https://github.com/Automattic/kue#devmode)
-- [cleanKueOnStartup](https://github.com/Automattic/kue#cleankueonstartup)
-- [returnJobOnEvents](https://github.com/Automattic/kue#returnjobonevents)
-- [logger](https://github.com/Automattic/kue#logger)
-- [redis](https://github.com/Automattic/kue#redis)
-- [storage](https://github.com/Automattic/kue#storage)
+- [searchKue](https://github.com/samhagman/flough#searchkue)
+- [devMode](https://github.com/samhagman/flough#devmode)
+- [cleanKueOnStartup](https://github.com/samhagman/flough#cleankueonstartup)
+- [returnJobOnEvents](https://github.com/samhagman/flough#returnjobonevents)
+- [logger](https://github.com/samhagman/flough#logger)
+- [redis](https://github.com/samhagman/flough#redis)
+- [storage](https://github.com/samhagman/flough#storage)
 
 ### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
 - [Substeps](https://github.com/samhagman/flough#substeps)
