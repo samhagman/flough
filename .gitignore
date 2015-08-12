@@ -12,3 +12,5 @@ test/server/config.js
 data/
 
 dump.rdb
+
+lib/
