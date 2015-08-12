@@ -191,6 +191,7 @@ function loggerBuilder(devMode, passedLogger, advanced) {
             info(toBeLogged) {
             },
             error(toBeLogged) {
+                console.error(`[ERROR] ${toBeLogged}`);
             },
             debug(toBeLogged) {
             }
