@@ -1,6 +1,10 @@
 {
   "name": "flough",
   "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samhagman/flough"
+  },
   "description": "A job orchestration framework.",
   "scripts": {
     "dev": "node index.js",
@@ -9,6 +13,9 @@
     "prepublish": "babel -d lib/ src/"
   },
   "author": "Sam Hagman <samuel.hagman@gmail.com>",
+  "engines": {
+    "node": ">=0.12.4"
+  },
   "devDependencies": {
     "babelify": "^6.0.1",
     "browserify": "^9.0.3",
