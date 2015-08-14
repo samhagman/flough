@@ -118,15 +118,16 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
 
         return new Promise((resolve, reject) => {
 
-            // Generate a UUID for th job.
-            let jobUUID = new ObjectId(Date.now());
-            data._uuid = jobUUID;
+            // Generate a new UUID for the job if no UUID is passed.
+            if (!data._uuid) {
+                data._uuid = new ObjectId(Date.now());
+            }
 
             // jobFields === Object to be stored in MongoDb
             // data === Object to be attached to Kue job
 
             let jobFields = {
-                _id:     jobUUID,
+                _id:     data._uuid,
                 jobId:   -1,
                 type:    jobType,
                 step:    data._step ? data._step : 0,
