@@ -9,16 +9,17 @@ export default function FlowSchemaBuilder(mongoose) {
         createdOn:  { type: Date, default: Date.now }
     }, { _id: false });
 
-    let RelatedJobSchema = new Schema({
-        jobId:     { type: Number, required: true },
-        type:      { type: String, required: true },
-        completed: { type: Boolean, default: false, required: true },
-        step:      { type: Number, required: true },
-        substep:   { type: Number, required: true },
-        data:      { type: Schema.Types.Mixed, required: false },
-        result:    { type: Schema.Types.Mixed, required: false },
-        createdOn: { type: Date, default: Date.now }
-    }, { _id: false });
+    // Unused for now.
+    //let RelatedJobSchema = new Schema({
+    //    jobId:     { type: Number, required: true },
+    //    type:      { type: String, required: true },
+    //    completed: { type: Boolean, default: false, required: true },
+    //    step:      { type: Number, required: true },
+    //    substep:   { type: Number, required: true },
+    //    data:      { type: Schema.Types.Mixed, required: false },
+    //    result:    { type: Schema.Types.Mixed, required: false },
+    //    createdOn: { type: Date, default: Date.now }
+    //}, { _id: false });
 
     let FlowSchema = new Schema({
             stepsTaken:    { type: Number, required: false },
@@ -26,9 +27,8 @@ export default function FlowSchemaBuilder(mongoose) {
             totalSteps:    { type: Number, required: false },
             jobType:       { type: String, required: false },
             jobData:       { type: Schema.Types.Mixed, required: true },
-            relatedJobs:   [ RelatedJobSchema ],
+            relatedJobs:   { type: Schema.Types.Mixed, required: true, default: {} },
             jobLogs:       [ JobLogSchema ],
-            results:       { type: Schema.Types.Mixed, required: true },
             completed:     { type: Boolean, required: true, default: false }
         },
         { collection: 'flow' });
