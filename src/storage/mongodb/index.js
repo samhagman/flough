@@ -2,8 +2,6 @@ let path = require('path');
 let fs = require('fs');
 let extend = require('extend');
 let session = require('express-session');
-let mongoose = require('mongoose');
-
 let attachHelpers = require('./lib/attachHelpers');
 
 export default function({storage, logger}) {
@@ -11,7 +9,10 @@ export default function({storage, logger}) {
 
     // Setup mongoose connection
     let connection;
+    let mongoose;
     if (storage.type === 'mongodb') {
+        mongoose = require('mongoose');
+
         // Connect to Mongo.
         connection = mongoose.createConnection(
             storage.uri,
@@ -19,6 +20,7 @@ export default function({storage, logger}) {
         );
     }
     else if (storage.type === 'mongoose') {
+        mongoose = storage.mongoose;
         connection = storage.connection;
     }
     else {
@@ -33,7 +35,7 @@ export default function({storage, logger}) {
             // is loaded from (without '.js' and in lowercase).
             let basename = path.basename(filename, '.js').toLowerCase();
             let filepath = path.join(modelDirectory, filename);
-            let Schema = require(filepath);
+            let Schema = require(filepath)(mongoose);
 
             // Set the collection name in MongoDB to be the same as the Mongoose model
             Schema.set('collection', basename);
