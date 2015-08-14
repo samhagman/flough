@@ -1,14 +1,33 @@
 {
   "name": "flough",
-  "version": "1.0.0",
   "description": "A job orchestration framework.",
+  "version": "1.0.6",
+  "author": "Sam Hagman <samuel.hagman@gmail.com>",
+  "license": "MIT",
   "scripts": {
     "dev": "node index.js",
     "start:mongodb": "mongod --replSet test --dbpath ./data/",
     "start:redis": "redis-server",
     "prepublish": "babel -d lib/ src/"
   },
-  "author": "Sam Hagman <samuel.hagman@gmail.com>",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samhagman/flough"
+  },
+  "engines": {
+    "node": ">=0.12.4"
+  },
+  "keywords": [
+    "job",
+    "queue",
+    "workflow",
+    "process",
+    "flow",
+    "redis",
+    "mongo",
+    "mongodb"
+  ],
   "devDependencies": {
     "babelify": "^6.0.1",
     "browserify": "^9.0.3",
@@ -20,7 +39,6 @@
     "run-sequence": "^1.0.2",
     "tape": "^4.0.0",
     "tape-catch": "^1.0.4",
-    "testling": "^1.7.1",
     "vinyl-buffer": "^1.0.0",
     "vinyl-source-stream": "^1.1.0",
     "watchify": "^3.1.0",
