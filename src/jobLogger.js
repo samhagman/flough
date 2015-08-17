@@ -16,8 +16,9 @@ export default function jobLogFactory(mongoCon, Logger) {
      * Logs messages to both the redis job and optionally the persistent storage's job
      * @param {String} msgString - The message to be logged
      * @param {String} jobUUID - The job's UUID the message belongs to.
+     * @param {Number} [jobId] - Optionally pass a Kue jobId to force jobLogger to use.
      */
-    function jobLogger(msgString, jobUUID) {
+    function jobLogger(msgString, jobUUID, jobId) {
 
         if (jobUUID) {
             // Find job based on UUID
@@ -34,7 +35,7 @@ export default function jobLogFactory(mongoCon, Logger) {
                     jobDoc.jobLogs.push({ message: msgString });
 
                     // Find the Kue job and log the message onto it.
-                    kue.Job.get(jobDoc.jobId, function(err, job) {
+                    kue.Job.get(jobId ? jobId : jobDoc.jobId, function(err, job) {
                         if (err) {
                             Logger.error(`Error getting job ${jobDoc.jobId} in Kue with UUID ${jobUUID} for jobLogger: ${err}`);
                         }

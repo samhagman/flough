@@ -118,7 +118,7 @@ I am going to use a completely useful example of wanting to get a website's HTML
 Before showing off a flow lets register another job so we can chain them together in a flow:
 
 ```node
-// Assuming Flough has been initialized
+// Assuming Flough has been initialized and you are NOT REQUIRING MONGOOSE IN YOUR APPLICATION
 Flough.registerJob('tweet_something', function(job, done, error) {
     
     Twitter.tweet({
@@ -263,7 +263,7 @@ which Flough will to help give more useful and intuitive log messages when devel
 
 - 'options.storage.type = 'mongo'` looks exactly like what's shown in the [full options example](https://github.com/samhagman/flough#intializing-a-flough-instance).
 
-- `options.storage.type = 'mongoose'` allows you to hand a mongoose connection (via `mongoose.createConnection()`) directly to Flough on `options.storage.connection`.
+- `options.storage.type = 'mongoose'` allows you to hand a mongoose connection (via `mongoose.createConnection()`) directly to Flough on `options.storage.connection`.  **Also important to note is that you should attach your mongoose library instance (`var mongoose = require('mongoose');`) to `options.storage.mongoose` because there are problems with mongoose where requiring mongoose in a npm module causes problems when creating Schemas inside the npm module, which is the case with Flough.**
 
 ## Additional Features
 
