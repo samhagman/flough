@@ -643,7 +643,6 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                     resolve(null);
                 }
                 else {
-                    Logger.error(_this.relatedJobs);
                     // Attach this job's result to the Flow Instance
                     _this.relatedJobs[ job.data._step ][ job.data._substep ].result = jobResult;
 

@@ -123,9 +123,6 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
              * data === Object to be attached to Kue job
              */
 
-            Logger.error('HERHEHREHRH');
-            Logger.error(data);
-
             // Generate a new UUID for the job if no UUID is passed.
             let alreadyPersisted = false;
             if (!data._uuid) {
