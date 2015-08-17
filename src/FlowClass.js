@@ -346,13 +346,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                                     }
 
                                     // Reuse the previous UUID if there is one
-                                    if (jobData._relatedJobs[ step ] &&
-                                        jobData._relatedJobs[ step ][ substep ] &&
-                                        jobData._relatedJobs[ step ][ substep ].data) {
-
-                                        jobData._uuid = jobData._relatedJobs[ step ][ substep ].data._uuid;
-                                    }
-
+                                    jobData._uuid = _.get(jobData._relatedJobs, `${step}.${substep}.data._uuid`, null);
 
                                     /**
                                      * Start the job.
@@ -486,10 +480,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
             //Logger.debug(`Relating job:`);
             //Logger.debug(job.data);
 
-            if (_this.relatedJobs[ step ]
-                && _this.relatedJobs[ step ][ substep ]
-                && !_this.relatedJobs[ step ][ substep ].data) {
-
+            if (!_.has(_this.relatedJobs, `${step}.${substep}.data`)) {
                 _this.relatedJobs[ step ][ substep ] = { data: null, result: null };
             }
             else {
