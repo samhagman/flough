@@ -2,7 +2,6 @@ let Promise = require('bluebird');
 let kue = require('kue');
 let _ = require('lodash');
 let ObjectId = require('mongoose').Types.ObjectId;
-let recursiveStringify = requireServer('lib/util').recursiveStringify;
 
 /**
  * Builds the Jobs APIs
@@ -62,10 +61,10 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
                     }
                     else if (jobDoc) {
                         jobDoc.jobId = job.id;
-                        if (jobDoc.jobLogs.length !== 0) {
-                            jobLogger('Job restarted.', job.data._uuid);
-                        }
                         jobDoc.save();
+                        if (jobDoc.jobLogs.length !== 0) {
+                            jobLogger('Job restarted.', job.data._uuid, job.id);
+                        }
                         resolve(job);
                     }
                     else {
@@ -118,15 +117,26 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
 
         return new Promise((resolve, reject) => {
 
-            // Generate a UUID for th job.
-            let jobUUID = new ObjectId(Date.now());
-            data._uuid = jobUUID;
+            /**
+             * NOTE:
+             * jobFields === Object to be stored in MongoDb
+             * data === Object to be attached to Kue job
+             */
 
-            // jobFields === Object to be stored in MongoDb
-            // data === Object to be attached to Kue job
+            Logger.error('HERHEHREHRH');
+            Logger.error(data);
+
+            // Generate a new UUID for the job if no UUID is passed.
+            let alreadyPersisted = false;
+            if (!data._uuid) {
+                data._uuid = new ObjectId(Date.now());
+            }
+            else {
+                alreadyPersisted = true;
+            }
 
             let jobFields = {
-                _id:     jobUUID,
+                _id:     data._uuid,
                 jobId:   -1,
                 type:    jobType,
                 step:    data._step ? data._step : 0,
@@ -152,17 +162,22 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
             }
 
             // Create record in mongo
-            JobModel.create(jobFields, (err, jobDoc) => {
+            if (!alreadyPersisted) {
+                JobModel.create(jobFields, (err, jobDoc) => {
 
-                if (err) {
-                    Logger.error(err);
-                    reject(err);
-                }
-                else {
-                    // Resolve with a Kue job that still needs to be .save()'d for it to run.
-                    resolve(queue.create(`job:${jobType}`, data));
-                }
-            });
+                    if (err) {
+                        Logger.error(err);
+                        reject(err);
+                    }
+                    else {
+                        // Resolve with a Kue job that still needs to be .save()'d for it to run.
+                        resolve(queue.create(`job:${jobType}`, data));
+                    }
+                });
+            }
+            else{
+                resolve(queue.create(`job:${jobType}`, data));
+            }
         });
     }
 

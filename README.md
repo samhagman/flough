@@ -1,4 +1,5 @@
 # Flough - A job orchestration framework.
+=========
 
 ## About
 
@@ -13,13 +14,13 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 
 ### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
 Options
-- [searchKue](https://github.com/Automattic/kue#searchkue)
-- [devMode](https://github.com/Automattic/kue#devmode)
-- [cleanKueOnStartup](https://github.com/Automattic/kue#cleankueonstartup)
-- [returnJobOnEvents](https://github.com/Automattic/kue#returnjobonevents)
-- [logger](https://github.com/Automattic/kue#logger)
-- [redis](https://github.com/Automattic/kue#redis)
-- [storage](https://github.com/Automattic/kue#storage)
+- [searchKue](https://github.com/samhagman/flough#searchkue)
+- [devMode](https://github.com/samhagman/flough#devmode)
+- [cleanKueOnStartup](https://github.com/samhagman/flough#cleankueonstartup)
+- [returnJobOnEvents](https://github.com/samhagman/flough#returnjobonevents)
+- [logger](https://github.com/samhagman/flough#logger)
+- [redis](https://github.com/samhagman/flough#redis)
+- [storage](https://github.com/samhagman/flough#storage)
 
 ### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
 - [Substeps](https://github.com/samhagman/flough#substeps)
@@ -36,6 +37,12 @@ Options
 There are two main building blocks to Flough: Jobs and Flows.
 *Jobs* are functions that are queued into [Kue](https://github.com/Automattic/kue) and are generally single purpose.
 *Flows* are chains of jobs that are grouped into steps and substeps.
+
+### Installation
+
+Flough is available as an [NPM module](https://www.npmjs.com/package/flough).
+
+`npm install --save flough`
 
 ### Basic Initialization
 
@@ -111,7 +118,7 @@ I am going to use a completely useful example of wanting to get a website's HTML
 Before showing off a flow lets register another job so we can chain them together in a flow:
 
 ```node
-// Assuming Flough has been initialized
+// Assuming Flough has been initialized and you are NOT REQUIRING MONGOOSE IN YOUR APPLICATION
 Flough.registerJob('tweet_something', function(job, done, error) {
     
     Twitter.tweet({
@@ -256,7 +263,7 @@ which Flough will to help give more useful and intuitive log messages when devel
 
 - 'options.storage.type = 'mongo'` looks exactly like what's shown in the [full options example](https://github.com/samhagman/flough#intializing-a-flough-instance).
 
-- `options.storage.type = 'mongoose'` allows you to hand a mongoose connection (via `mongoose.createConnection()`) directly to Flough on `options.storage.connection`.
+- `options.storage.type = 'mongoose'` allows you to hand a mongoose connection (via `mongoose.createConnection()`) directly to Flough on `options.storage.connection`.  **Also important to note is that you should attach your mongoose library instance (`var mongoose = require('mongoose');`) to `options.storage.mongoose` because there are problems with mongoose where requiring mongoose in a npm module causes problems when creating Schemas inside the npm module, which is the case with Flough.**
 
 ## Additional Features
 
@@ -324,3 +331,15 @@ This will use the `.type('or')` functionality of [reds](https://github.com/tj/re
 # Tests
 
 TODO
+
+# License
+
+**MIT License**
+
+Copyright (c) 2015 Sam Hagman <https://www.samhagman.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the 'Software'), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
