@@ -9,12 +9,11 @@ let _ = require('lodash');
  * @param {Object} mongoCon - Mongoose connection
  * @param {Object} o - User passed options
  */
-export default function flowClassBuilder(queue, mongoCon, o) {
+export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
     let Logger = o.logger.func;
 
     // Grabs the Job APIs so that Flow can start jobs
     let jobAPI = require('./jobAPI')(queue, mongoCon, o);
-    let flowAPI = require('./flowAPI')(queue, mongoCon, o);
 
     class Flow {
 
@@ -89,9 +88,9 @@ export default function flowClassBuilder(queue, mongoCon, o) {
          */
         start(promiseArray = []) {
 
-            Logger.debug(`[${this.flowId}] Starting init flow`);
-
             let _this = this;
+
+            Logger.debug(`[${_this.flowId}][${_this.jobType}] Starting init flow`);
 
             // Attach User passed promises to resolve before any flow.job()s run.
             _this.promised[ '0' ].concat(promiseArray);
@@ -178,7 +177,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
          * Registers a Job of a certain type with this Flow to be run at the given step with the given data.
          * @param {number} step - The step for the job to run at
          * @param {string} jobType - The type of job to run (jobs registered with Flough.registerJob())
-         * @param {object} jobData - The data to attach to the job.
+         * @param {Object} jobData - The data to attach to the job.
          */
         job(step, jobType, jobData) {
 
@@ -198,115 +197,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                 substep = 1;
             }
 
-            Logger.debug(`Step: ${step}, Substep: ${substep}`);
-
-            /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
-
-            // I never want to type job handler again...
-            _this.jobHandlers.push(() => {
-
-                // .handleJob() will eventually determine when and if to run this job based on step, substep, and
-                // previous completion
-                return _this.handleJob(step, substep, () => {
-                    return new Promise((jobResolve, jobReject) => {
-                        try {
-
-                            // Lookup this Flow in Mongo to see latest results of past jobs.
-                            _this.FlowModel.findById(_this.flowId, (error, flowDoc) => {
-                                if (error) {
-                                    jobReject(new Error(`Could not find Flow with ID ${_this.flowId} to get past results from for new job.`));
-                                }
-                                else {
-
-                                    /* Build data to attach to the Kue job's data. */
-
-                                    // Attach step and substep information to the job.
-                                    jobData._step = step;
-                                    jobData._substep = substep;
-                                    jobData._flowId = _this.flowId;
-
-                                    // Attach past results to job's data before starting it, so users can access these.
-                                    jobData._relatedJobs = flowDoc.relatedJobs;
-
-                                    // Grab the previous step's results
-                                    if (step > 1) {
-                                        jobData._lastJob = flowDoc.relatedJobs[ (step - 1).toString() ];
-                                    }
-                                    // There was no previous step
-                                    else {
-                                        jobData._lastJob = null;
-                                    }
-
-                                    // Reuse the previous UUID if there is one
-                                    if (jobData._relatedJobs[step] &&
-                                        jobData._relatedJobs[ step ][ substep ] &&
-                                        jobData._relatedJobs[ step ][ substep ].data) {
-
-                                        jobData._uuid = jobData._relatedJobs[ step ][ substep ].data._uuid;
-                                    }
-
-
-                                    /**
-                                     * Start the job.
-                                     */
-
-                                    jobAPI.startJob(jobType, jobData)
-                                        .then(job => {
-
-                                            // When job is enqueued into Kue, relate the job to this flow.
-                                            let relateJobPromise;
-                                            job.on('enqueue', () => {
-
-                                                relateJobPromise = _this.relateJob(job, step, substep);
-                                            });
-
-                                            // When job is complete, resolve with job and result.
-                                            job.on('complete', (result) => {
-                                                relateJobPromise
-                                                    .then(() => {
-                                                        jobResolve([ job, (result ? result : null) ]);
-                                                    })
-                                                    .catch((err) => jobReject(err))
-                                                ;
-                                            });
-
-                                            // TODO do error handling on the .save((err)=>{}) method
-                                            // Actually start this job inside Kue.
-                                            job.save();
-                                        })
-                                    ;
-                                }
-                            });
-                        }
-                        catch (e) {
-                            jobReject(e);
-                        }
-                    });
-                });
-            });
-
-            return _this;
-        }
-
-        flow(step, flowType, jobData) {
-
-            let _this = this;
-            let substep;
-
-            /* Determine Step/Substep */
-
-            // If we already have substeps at this step, increase substeps by 1 and set substep to the result
-            if (_this.substeps[ step ]) {
-                _this.substeps[ step ] += 1;
-                substep = _this.substeps[ step ];
-            }
-            // If no substeps at this step, set them to 1 and set substep to 1
-            else {
-                _this.substeps[ step ] = 1;
-                substep = 1;
-            }
-
-            Logger.debug(`Step: ${step}, Substep: ${substep}`);
+            //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
             /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
 
@@ -358,7 +249,118 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                                      * Start the job.
                                      */
 
-                                    flowAPI.startFlow(flowType, jobData)
+                                    jobAPI.startJob(jobType, jobData)
+                                        .then(job => {
+
+                                            // When job is enqueued into Kue, relate the job to this flow.
+                                            let relateJobPromise;
+                                            job.on('enqueue', () => {
+
+                                                relateJobPromise = _this.relateJob(job, step, substep);
+                                            });
+
+                                            // When job is complete, resolve with job and result.
+                                            job.on('complete', (result) => {
+                                                relateJobPromise
+                                                    .then(() => {
+                                                        jobResolve([ job, (result ? result : null) ]);
+                                                    })
+                                                    .catch((err) => jobReject(err))
+                                                ;
+                                            });
+
+                                            // TODO do error handling on the .save((err)=>{}) method
+                                            // Actually start this job inside Kue.
+                                            job.save();
+                                        })
+                                    ;
+                                }
+                            });
+                        }
+                        catch (e) {
+                            jobReject(e);
+                        }
+                    });
+                });
+            });
+
+            return _this;
+        }
+
+        /**
+         *
+         * @param step
+         * @param flowType
+         * @param {Object} [jobData]
+         * @returns {Flow}
+         */
+        flow(step, flowType, jobData = {}) {
+
+            let _this = this;
+            let substep;
+
+            /* Determine Step/Substep */
+
+            // If we already have substeps at this step, increase substeps by 1 and set substep to the result
+            if (_this.substeps[ step ]) {
+                _this.substeps[ step ] += 1;
+                substep = _this.substeps[ step ];
+            }
+            // If no substeps at this step, set them to 1 and set substep to 1
+            else {
+                _this.substeps[ step ] = 1;
+                substep = 1;
+            }
+
+            //Logger.debug(`Step: ${step}, Substep: ${substep}`);
+
+            /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
+
+            // I never want to type job handler again...
+            _this.jobHandlers.push(() => {
+
+                // .handleJob() will eventually determine when and if to run this job based on step, substep, and
+                // previous completion
+                return _this.handleJob(step, substep, () => {
+                    return new Promise((jobResolve, jobReject) => {
+                        try {
+
+                            // Lookup this Flow in Mongo to see latest results of past jobs.
+                            _this.FlowModel.findById(_this.flowId, (error, flowDoc) => {
+                                if (error) {
+                                    jobReject(new Error(`Could not find Flow with ID ${_this.flowId} to get past results from for new job.`));
+                                }
+                                else {
+
+                                    /* Build data to attach to the Kue job's data. */
+
+                                    // Attach step and substep information to the job.
+                                    jobData._step = step;
+                                    jobData._substep = substep;
+
+                                    // UNLIKE IN .job(), reuse the previous flowId if there is one.
+                                    jobData._flowId = _.get(flowDoc.relatedJobs, `${step}.${substep}.data._flowId`, null);
+
+                                    // Attach past results to job's data before starting it, so users can access these.
+                                    jobData._relatedJobs = flowDoc.relatedJobs;
+
+                                    // Grab the previous step's results
+                                    if (step > 1) {
+                                        jobData._lastJob = flowDoc.relatedJobs[ (step - 1).toString() ];
+                                    }
+                                    // There was no previous step
+                                    else {
+                                        jobData._lastJob = null;
+                                    }
+
+                                    // Reuse the previous UUID if there is one
+                                    jobData._uuid = _.get(jobData._relatedJobs, `${step}.${substep}.data._uuid`, null);
+
+                                    /**
+                                     * Start the job.
+                                     */
+
+                                    startFlow(flowType, jobData)
                                         .then(flowJob => {
 
                                             // When job is enqueued into Kue, relate the job to this flow.
@@ -483,23 +485,13 @@ export default function flowClassBuilder(queue, mongoCon, o) {
 
             let _this = this;
 
-            //Logger.debug(`Relating job:`);
-            //Logger.debug(job.data);
-
-            if (_this.relatedJobs[ step ]
-                && _this.relatedJobs[ step ][ substep ]
-                && !_this.relatedJobs[ step ][ substep ].data) {
-
+            // If this substep has a related job already, reset it's values
+            if (_.has(_this.relatedJobs, `${step}.${substep}`)) {
                 _this.relatedJobs[ step ][ substep ] = { data: null, result: null };
             }
+            // Else initialize the results holder for this STEP and SUBSTEP to hold the eventual result for this job.
             else {
-                // Initialize the results holder for this STEP and SUBSTEP to hold the eventual result for this job.
-                _this.relatedJobs[ step ] = {
-                    [substep]: {
-                        data:   null,
-                        result: null
-                    }
-                };
+                _this.relatedJobs[ step ] = { [substep]: { data: null, result: null } };
             }
 
             _this.relatedJobs[ step ][ substep ].data = job.data;
