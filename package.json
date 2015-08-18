@@ -1,7 +1,7 @@
 {
   "name": "flough",
   "description": "A job orchestration framework.",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "author": "Sam Hagman <samuel.hagman@gmail.com>",
   "license": "MIT",
   "scripts": {
