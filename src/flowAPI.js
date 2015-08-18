@@ -11,7 +11,7 @@ let ObjectId = require('mongoose').Types.ObjectId;
  * @returns {{registerFlow, startFlow}}
  */
 export default function flowAPIBuilder(queue, mongoCon, o) {
-    let FlowController = require('./FlowClass')(queue, mongoCon, o);
+    let FlowController = require('./FlowClass')(queue, mongoCon, o, startFlow);
 
     let logger = o.logger.func;
 
@@ -23,7 +23,8 @@ export default function flowAPIBuilder(queue, mongoCon, o) {
     function registerFlow(flowName, flowFunc) {
 
         /**
-         * Starts a new FlowController Instance and then wraps User's flow function in promise and injects parameters into it.
+         * Starts a new FlowController Instance and then wraps User's flow function in promise and injects parameters
+         * into it.
          * @param {Object} job - A Kue job that is used to track and restart the Flow
          * @returns {bluebird|exports|module.exports}
          */
@@ -79,9 +80,10 @@ export default function flowAPIBuilder(queue, mongoCon, o) {
      * Starts a Flow by attaching extra fields to the User passed data and running Kue's queue.create()
      * @param {String} flowName - Name of Flow to start
      * @param {Object} [data] - Data context to be attached to this Flow
+     * @param {Boolean} [helper] - If this is a helper flow, it will not restart on its own after a server restart.
      * @returns {bluebird|exports|module.exports}
      */
-    function startFlow(flowName, data = {}) {
+    function startFlow(flowName, data = {}, helper = false) {
 
         return new Promise((resolve, reject) => {
 
@@ -96,6 +98,8 @@ export default function flowAPIBuilder(queue, mongoCon, o) {
             if (!data._flowId) {
                 data._flowId = new ObjectId(Date.now());
             }
+
+            data._helper = helper;
 
             resolve(queue.create(`flow:${flowName}`, data));
         });
