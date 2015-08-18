@@ -9,12 +9,11 @@ let _ = require('lodash');
  * @param {Object} mongoCon - Mongoose connection
  * @param {Object} o - User passed options
  */
-export default function flowClassBuilder(queue, mongoCon, o) {
+export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
     let Logger = o.logger.func;
 
     // Grabs the Job APIs so that Flow can start jobs
     let jobAPI = require('./jobAPI')(queue, mongoCon, o);
-    let flowAPI = require('./flowAPI')(queue, mongoCon, o);
 
     class Flow {
 
@@ -89,9 +88,9 @@ export default function flowClassBuilder(queue, mongoCon, o) {
          */
         start(promiseArray = []) {
 
-            Logger.debug(`[${this.flowId}] Starting init flow`);
-
             let _this = this;
+
+            Logger.debug(`[${_this.flowId}][${_this.jobType}] Starting init flow`);
 
             // Attach User passed promises to resolve before any flow.job()s run.
             _this.promised[ '0' ].concat(promiseArray);
@@ -178,7 +177,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
          * Registers a Job of a certain type with this Flow to be run at the given step with the given data.
          * @param {number} step - The step for the job to run at
          * @param {string} jobType - The type of job to run (jobs registered with Flough.registerJob())
-         * @param {object} jobData - The data to attach to the job.
+         * @param {Object} jobData - The data to attach to the job.
          */
         job(step, jobType, jobData) {
 
@@ -198,7 +197,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                 substep = 1;
             }
 
-            Logger.debug(`Step: ${step}, Substep: ${substep}`);
+            //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
             /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
 
@@ -238,7 +237,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                                     }
 
                                     // Reuse the previous UUID if there is one
-                                    if (jobData._relatedJobs[step] &&
+                                    if (jobData._relatedJobs[ step ] &&
                                         jobData._relatedJobs[ step ][ substep ] &&
                                         jobData._relatedJobs[ step ][ substep ].data) {
 
@@ -288,7 +287,14 @@ export default function flowClassBuilder(queue, mongoCon, o) {
             return _this;
         }
 
-        flow(step, flowType, jobData) {
+        /**
+         *
+         * @param step
+         * @param flowType
+         * @param {Object} [jobData]
+         * @returns {Flow}
+         */
+        flow(step, flowType, jobData = {}) {
 
             let _this = this;
             let substep;
@@ -306,7 +312,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                 substep = 1;
             }
 
-            Logger.debug(`Step: ${step}, Substep: ${substep}`);
+            //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
             /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
 
@@ -331,7 +337,9 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                                     // Attach step and substep information to the job.
                                     jobData._step = step;
                                     jobData._substep = substep;
-                                    jobData._flowId = _this.flowId;
+
+                                    // UNLIKE IN .job(), reuse the previous flowId if there is one.
+                                    jobData._flowId = _.get(flowDoc.relatedJobs, `${step}.${substep}.data._flowId`, null);
 
                                     // Attach past results to job's data before starting it, so users can access these.
                                     jobData._relatedJobs = flowDoc.relatedJobs;
@@ -352,7 +360,7 @@ export default function flowClassBuilder(queue, mongoCon, o) {
                                      * Start the job.
                                      */
 
-                                    flowAPI.startFlow(flowType, jobData)
+                                    startFlow(flowType, jobData)
                                         .then(flowJob => {
 
                                             // When job is enqueued into Kue, relate the job to this flow.
@@ -477,20 +485,13 @@ export default function flowClassBuilder(queue, mongoCon, o) {
 
             let _this = this;
 
-            //Logger.debug(`Relating job:`);
-            //Logger.debug(job.data);
-
-            if (!_.has(_this.relatedJobs, `${step}.${substep}.data`)) {
+            // If this substep has a related job already, reset it's values
+            if (_.has(_this.relatedJobs, `${step}.${substep}`)) {
                 _this.relatedJobs[ step ][ substep ] = { data: null, result: null };
             }
+            // Else initialize the results holder for this STEP and SUBSTEP to hold the eventual result for this job.
             else {
-                // Initialize the results holder for this STEP and SUBSTEP to hold the eventual result for this job.
-                _this.relatedJobs[ step ] = {
-                    [substep]: {
-                        data:   null,
-                        result: null
-                    }
-                };
+                _this.relatedJobs[ step ] = { [substep]: { data: null, result: null } };
             }
 
             _this.relatedJobs[ step ][ substep ].data = job.data;

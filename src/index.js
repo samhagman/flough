@@ -488,6 +488,11 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                                     if (job.type.substr(0, 3) === 'job' && job.state() === 'inactive' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
                                     }
+                                    /* A. */
+                                    // Or if a job was specifically marked as a helper job also remove it.
+                                    else if (job.data._helper) {
+                                        job.remove();
+                                    }
                                     jobsCleaned('inactive');
                                 });
                             });
