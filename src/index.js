@@ -485,7 +485,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
 
                                     /* A. */
                                     // If this job is a helper job and is still queued and it was part of a flow, remove it.
-                                    if (job.type.substr(0, 3) === 'job' && job.state() === 'inactive' && job.data._flowId !== 'NoFlow') {
+                                    if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
                                     }
                                     /* A. */
@@ -504,6 +504,11 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                                     /* A. */
                                     // If this job is a helper job of a flow, remove it.
                                     if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
+                                        job.remove();
+                                    }
+                                    /* A. */
+                                    // Or if a job was specifically marked as a helper job also remove it.
+                                    else if (job.data._helper) {
                                         job.remove();
                                     }
                                     /* B. */
