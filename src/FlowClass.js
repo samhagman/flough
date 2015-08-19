@@ -147,11 +147,26 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                     // Restart Flow with values that were saved to storage
                                     _this.stepsTaken = flowDoc.stepsTaken;
                                     _this.substepsTaken = flowDoc.substepsTaken;
-                                    _this.relatedJobs = flowDoc.relatedJobs;
 
-                                    Logger.info(`[${_this.flowId}] Flow restarted.`);
-                                    resolve(_this);
+                                    // Remove relatedJobs that were added but their step/substep never completed
+                                    _this.relatedJobs = _(_this.relatedJobs)
+                                        .pick(_.range(_this.stepsTaken + 1))
+                                        .mapValues((value, key, obj) => {
+                                            if (key < _this.stepsTaken) {
+                                                return value;
+                                            }
+                                            else {
+                                                return _.pick(value, _this.substepsTaken);
+                                            }
+                                        })
+                                        .value()
+                                    ;
 
+                                    flowDoc.relatedJobs = _this.relatedJobs;
+                                    flowDoc.save(() => {
+                                        Logger.info(`[${_this.flowId}] Flow restarted.`);
+                                        resolve(_this);
+                                    });
                                 }
                                 else {
                                     reject(new Error(`[${_this.flowId}] Something went very very wrong when start()ing Flow...`));
@@ -360,7 +375,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                      * Start the job.
                                      */
 
-                                    startFlow(flowType, jobData)
+                                    startFlow(flowType, jobData, true)
                                         .then(flowJob => {
 
                                             // When job is enqueued into Kue, relate the job to this flow.
@@ -487,14 +502,12 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
 
             // If this substep has a related job already, reset it's values
             if (_.has(_this.relatedJobs, `${step}.${substep}`)) {
-                _this.relatedJobs[ step ][ substep ] = { data: null, result: null };
+                _this.relatedJobs[ step ][ substep ] = { data: job.data, result: null };
             }
             // Else initialize the results holder for this STEP and SUBSTEP to hold the eventual result for this job.
             else {
-                _this.relatedJobs[ step ] = { [substep]: { data: null, result: null } };
+                _this.relatedJobs[ step ] = { [substep]: { data: job.data, result: null } };
             }
-
-            _this.relatedJobs[ step ][ substep ].data = job.data;
 
             return new Promise((resolve, reject) => {
                 _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
@@ -510,7 +523,9 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                         // Updated flow's related jobs to include this substep's job
                         flowDoc.relatedJobs = _this.relatedJobs;
                         flowDoc.markModified('relatedJobs');
-                        flowDoc.save(() => resolve(job));
+                        flowDoc.save(() => {
+                            resolve(job)
+                        });
                     }
                 });
             });

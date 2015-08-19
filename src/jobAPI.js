@@ -32,7 +32,6 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
          */
         const jobWrapper = function(job) {
             Logger.info(`Starting: ${jobType}`);
-            Logger.debug(job.type);
             Logger.debug(job.data);
 
             return new Promise((resolve, reject) => {
