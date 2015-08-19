@@ -13,7 +13,7 @@ let ObjectId = require('mongoose').Types.ObjectId;
 export default function flowAPIBuilder(queue, mongoCon, o) {
     let FlowController = require('./FlowClass')(queue, mongoCon, o, startFlow);
 
-    let logger = o.logger.func;
+    let Logger = o.logger.func;
 
     /**
      * Registers a function so that it can be called by .startFlow()
@@ -30,12 +30,9 @@ export default function flowAPIBuilder(queue, mongoCon, o) {
          */
         const flowWrapper = function(job) {
 
-            logger.debug('Starting processing eaf_funding_change...');
-
-
             return new Promise((resolve, reject) => {
 
-                let flow = new FlowController(job, mongoCon);
+                let flow = new FlowController(job);
 
                 flowFunc(flow, resolve, reject);
 
@@ -55,7 +52,7 @@ export default function flowAPIBuilder(queue, mongoCon, o) {
         queue.process(`flow:${flowName}`, jobProcessingConcurrency, (job, done) => {
 
 
-            logger.info(`Starting: job:${flowName}`);
+            Logger.info(`Starting: flow:${flowName}`);
             //logger.debug(job.data);
 
             // If in devMode do not catch errors, let process crash
