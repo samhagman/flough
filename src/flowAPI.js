@@ -96,6 +96,10 @@ export default function flowAPIBuilder(queue, mongoCon, o) {
                 data._flowId = new ObjectId(Date.now());
             }
 
+            if (!data._uuid) {
+                data._uuid = new ObjectId(Date.now());
+            }
+
             data._helper = helper;
 
             resolve(queue.create(`flow:${flowName}`, data));
