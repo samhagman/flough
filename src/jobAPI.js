@@ -3,6 +3,7 @@ let kue = require('kue');
 let _ = require('lodash');
 let ObjectId = require('mongoose').Types.ObjectId;
 
+
 /**
  * Builds the Jobs APIs
  * @param {Object} queue - Kue queue
@@ -15,6 +16,7 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
     let Logger = o.logger.func;
     let JobModel = mongoCon.model('job');
     let jobLogger = require('./jobLogger')(mongoCon, Logger);
+
 
     /**
      * Allows a User to register a job function for repeated use by .startJob()
@@ -87,6 +89,7 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
             // If in devMode, do not catch errors let the process crash
             if (o.devMode) {
                 storeJobId(job)
+
                     .then(jobWrapper)
                     .then((result) => done(null, result));
             }
@@ -104,6 +107,22 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
             }
         });
 
+    }
+
+    /**
+     * Create the kue job but first add any dynamic properties.
+     * @param jobType
+     * @param data
+     * @returns {bluebird|exports|module.exports}
+     */
+    function createJob(jobType, data) {
+
+        // TODO
+
+
+        return new Promise((resolve, reject) => {
+            resolve(queue.create(`job:${jobType}`, data));
+        })
     }
 
     /**
@@ -167,12 +186,12 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
                     }
                     else {
                         // Resolve with a Kue job that still needs to be .save()'d for it to run.
-                        resolve(queue.create(`job:${jobType}`, data));
+                        resolve(createJob(jobType, data));
                     }
                 });
             }
-            else{
-                resolve(queue.create(`job:${jobType}`, data));
+            else {
+                resolve(createJob(jobType, data));
             }
         });
     }

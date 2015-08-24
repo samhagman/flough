@@ -29,6 +29,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
             this.data = job.data;
             this.jobType = job.type;
             this.flowId = job.data._flowId;
+            this.parentFlowId = job.data._parentFlowId;
             this.stepsTaken = job.data._stepsTaken;
             this.substepsTaken = job.data._substepsTaken;
             this.completed = false;
@@ -324,7 +325,6 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                             return new Promise((jobResolve, jobReject) => {
                                 try {
 
-
                                     /* Build data to attach to the Kue job's data. */
 
                                     // Attach step and substep information to the job.
@@ -340,7 +340,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
 
                                     // Attach past results to job's data before starting it, so users can
                                     // access these.
-                                    jobData._relatedJobs = relatedJobs;
+                                    jobData._relatedJobs = _.get(relatedJobs, `${step}.${substep}`, null);
 
                                     // Grab the previous step's results
                                     if (step > 1) {
@@ -353,6 +353,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
 
                                     // Reuse the previous UUID if there is one
                                     jobData._uuid = jobUUID;
+                                    jobData._parentFlowId = _this.flowId;
 
                                     /**
                                      * Start the job.
@@ -484,35 +485,45 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
             let _this = this;
 
 
-
             return new Promise((resolve, reject) => {
-                _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
-                    if (err) {
-                        Logger.error(`[${_this.flowId}] Error relating job to Flow`);
-                        Logger.error(`[${_this.flowId}] ${err}`);
-                        reject(err);
+                // Push job on to the activeJobs stack
+                _this.activeJobs.push[ job ];
+                Logger.error(`Relating job ${job.data._uuid} at ${step}.${substep}`);
+
+                _this.FlowModel.findOneAndUpdate({ _id: _this.flowId }, {
+                    $set: {
+                        [`relatedJobs.${step}.${substep}`]: {
+                            data:   job.data,
+                            result: null
+                        }
                     }
-                    else {
-                        // Push job on to the activeJobs stack
-                        _this.activeJobs.push[ job ];
+                }, { new: true, upsert: true }, (err, flowDoc) => {
+                    if (err) {
+                        Logger.error(`Error updating relatedJobs: ${err}`);
+                        reject(job);
+                    }
+                    // If this job is part of a helper flow, update parent flows relatedJobs with this info
+                    else if (_this.parentFlowId) {
 
-                        // Initialize relatedJobs if needed
-                        flowDoc.relatedJobs = flowDoc.relatedJobs || {};
-
-                        // Updated flow's related jobs to include this substep's job
-                        // If this substep has a related job already, reset it's values
-                        if (_.has(flowDoc.relatedJobs, `${step}.${substep}`)) {
-                            flowDoc.relatedJobs[ step ][ substep ] = { data: job.data, result: null };
-                        }
-                        // Else initialize the results holder for this STEP and SUBSTEP to hold the eventual result for this job.
-                        else {
-                            flowDoc.relatedJobs[ step ] = { [substep]: { data: job.data, result: null } };
-                        }
-                        flowDoc.markModified('relatedJobs');
-                        flowDoc.save(() => {
-                            resolve(job)
+                        _this.FlowModel.findOneAndUpdate({ _id: _this.parentFlowId }, {
+                            $set: {
+                                [`relatedJobs.${_this.data._step}.${_this.data._substep}.data._relatedJobs`]: flowDoc.relatedJobs
+                            }
+                        }, { new: true, upsert: true }, (err, parentFlowDoc) => {
+                            if (err) {
+                                Logger.error(`Error updating parent flow's relatedJobs: ${err}`);
+                                reject(job);
+                            }
+                            else {
+                                Logger.error(parentFlowDoc);
+                                resolve(job);
+                            }
                         });
                     }
+                    else {
+                        resolve(job);
+                    }
+
                 });
             });
         }
@@ -710,8 +721,8 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                 _this.substepsTaken = flowDoc.substepsTaken;
 
                                 // Update the Job in Mongo to be complete.
-                                _this.JobModel.findOneAndUpdate({ _id: job.data._uuid }, {
-                                    complete: true,
+                                _this.JobModel.findByIdAndUpdate(job.data._uuid, {
+                                    completed: true,
                                     result:   jobResult
                                 }, { new: true })
                                     .then((jobDoc, err) => {
@@ -719,6 +730,9 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                             reject(err);
                                         }
                                         else {
+                                            Logger.error('Completed Job:');
+                                            Logger.error(jobDoc);
+
                                             resolve(job);
                                         }
                                     })
