@@ -13,9 +13,11 @@ function getSearch(redisClient) {
     if (search) {
         return search;
     }
-    reds.createClient = redisClient;
+    reds.client = redisClient;
+
     // This is the key that Kue uses internally to store search indexes.
-    return search = reds.createSearch('q:search');
+    search = reds.createSearch('q:search');
+    return search;
 }
 
 
@@ -49,6 +51,7 @@ export default function setupKueSearcher(queue, redisClient, {logger}) {
 
             searcher.end(function(err, ids) {
                 if (err) {
+                    Logger.error(err);
                     reject(err);
                 }
                 else {
@@ -68,7 +71,9 @@ export default function setupKueSearcher(queue, redisClient, {logger}) {
                     });
 
                     // When all jobs are retrieved, resolve with all the jobs.
-                    Promise.all(promArray).then((jobs) => resolve(jobs)).catch((err) => reject(err));
+                    Promise.all(promArray).then((jobs) => {
+                        resolve(jobs)
+                    }).catch((err) => reject(err));
                 }
             })
             ;
