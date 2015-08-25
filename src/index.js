@@ -32,24 +32,18 @@ export default function floughBuilder() {
                     return [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ];
                 }).spread((queue, storageClient, redisClient) => {
 
-                    // Setup and attach the APIs for Flows and Jobs
-                    let flowAPIs = require('./flowAPI')(queue, storageClient, FloughAPI.prototype.o);
-                    let jobAPIs = require('./jobAPI')(queue, storageClient, FloughAPI.prototype.o);
-                    for (let api of Object.keys(flowAPIs)) {
-                        FloughAPI.prototype[ api ] = flowAPIs[ api ];
-                    }
-                    for (let api of Object.keys(jobAPIs)) {
-                        FloughAPI.prototype[ api ] = jobAPIs[ api ];
-                    }
-
                     // Setup search functionality for Flough Class
                     FloughAPI.prototype.search = require('./searcher')(queue, redisClient, FloughAPI.prototype.o);
 
                     // Create a Flough Instance
                     let FloughInstance = new FloughAPI();
 
+                    // Setup and attach the APIs for Flows and Jobs
+                    FloughInstance = require('./jobAPI')(queue, storageClient, FloughInstance);
+                    FloughInstance = require('./flowAPI')(queue, storageClient, FloughInstance);
+
                     // Attach event functionality to Flough Instance and return the modified Flough Instance
-                    return attachEvents(queue, FloughInstance, FloughAPI.prototype.o);
+                    return attachEvents(queue, FloughInstance);
                 });
 
         }
@@ -250,11 +244,12 @@ function loggerBuilder(devMode, passedLogger, advanced) {
  * @param {Object} logger - Flough Internal Logging Function
  * @returns {*}
  */
-function attachEvents(queue, FloughInstance, {returnJobOnEvents, logger}) {
+function attachEvents(queue, FloughInstance) {
 
-    let internalLogger = logger.func;
+    let o = FloughInstance.o;
+    let internalLogger = o.logger.func;
 
-    if (returnJobOnEvents) {
+    if (o.returnJobOnEvents) {
         // Setup queue logging events
         queue
             .on('job enqueue', (id, type) => {

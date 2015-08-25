@@ -7,12 +7,12 @@ let ObjectId = require('mongoose').Types.ObjectId;
  * Builds the Flow API
  * @param {Object} queue - Kue queue
  * @param {Object} mongoCon - Mongoose Connection
- * @param {Object} o - Options passed by user to Flough
+ * @param {Object} FloughInstance - Instance of FloughAPI that is passed to the user.
  * @returns {{registerFlow, startFlow}}
  */
-export default function flowAPIBuilder(queue, mongoCon, o) {
-    let FlowController = require('./FlowClass')(queue, mongoCon, o, startFlow);
-
+export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
+    let FlowController = require('./FlowClass')(queue, mongoCon, FloughInstance, startFlow);
+    let o = FloughInstance.o;
     let Logger = o.logger.func;
 
     /**
@@ -109,9 +109,8 @@ export default function flowAPIBuilder(queue, mongoCon, o) {
     }
 
     // Create, attach functions to, and return Flow API object
-    let flowAPI = {};
-    flowAPI.registerFlow = registerFlow;
-    flowAPI.startFlow = startFlow;
+    FloughInstance.registerFlow = registerFlow;
+    FloughInstance.startFlow = startFlow;
 
-    return flowAPI;
+    return FloughInstance;
 }

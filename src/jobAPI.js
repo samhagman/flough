@@ -8,22 +8,33 @@ let ObjectId = require('mongoose').Types.ObjectId;
  * Builds the Jobs APIs
  * @param {Object} queue - Kue queue
  * @param {Object} mongoCon - Mongoose connection
- * @param {Object} o - User passed options to Flough
+ * @param {Object} FloughInstance - FloughAPI instance that is eventually passed to the user.
  * @returns {{registerJob, startJob}}
  */
-export default function jobAPIBuilder(queue, mongoCon, o) {
+export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
+    let o = FloughInstance.o;
     let Logger = o.logger.func;
     let JobModel = mongoCon.model('job');
     let jobLogger = require('./jobLogger')(mongoCon, Logger);
+
+    FloughInstance._dynamicPropFuncs = {};
 
 
     /**
      * Allows a User to register a job function for repeated use by .startJob()
      * @param {String} jobType - The string that this job should be registered under
+     * @param {Function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     *  that will be merged into the job.data of all jobs of this type.
      * @param {Function} jobFunc - The User passed function that holds the job's logic
      */
-    function registerJob(jobType, jobFunc) {
+    function registerJob(jobType, jobFunc, dynamicPropFunc = () => {return {};}) {
+
+        // Add the function to the dynamic properties functions list.
+        FloughInstance._dynamicPropFuncs[jobType] = dynamicPropFunc;
+
+        Logger.error('_dynamicPropFuncs');
+        Logger.error(FloughInstance._dynamicPropFuncs);
 
         /**
          * Wraps the user-given job in a promise,
@@ -89,7 +100,6 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
             // If in devMode, do not catch errors let the process crash
             if (o.devMode) {
                 storeJobId(job)
-
                     .then(jobWrapper)
                     .then((result) => done(null, result));
             }
@@ -117,11 +127,14 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
      */
     function createJob(jobType, data) {
 
-        // TODO
-
-
+        let dynamicProperties = FloughInstance._dynamicPropFuncs[jobType](data);
+        let mergedProperties = _.merge(data, dynamicProperties);
+        Logger.error('props');
+        Logger.error(FloughInstance._dynamicPropFuncs);
+        Logger.error(dynamicProperties);
+        Logger.error(mergedProperties);
         return new Promise((resolve, reject) => {
-            resolve(queue.create(`job:${jobType}`, data));
+            resolve(queue.create(`job:${jobType}`, mergedProperties));
         })
     }
 
@@ -197,9 +210,8 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
     }
 
     // Setup, attach to, and return Job API object
-    let jobAPI = {};
-    jobAPI.registerJob = registerJob;
-    jobAPI.startJob = startJob;
+    FloughInstance.registerJob = registerJob;
+    FloughInstance.startJob = startJob;
 
-    return jobAPI;
+    return FloughInstance;
 }

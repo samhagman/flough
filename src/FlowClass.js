@@ -7,14 +7,14 @@ let _ = require('lodash');
  * The Flow class handles chains of Kue jobs so that they are executed only once and at the right time.
  * @param {Object} queue - Kue queue
  * @param {Object} mongoCon - Mongoose connection
- * @param {Object} o - User passed options
+ * @param {Object} FloughInstance - The instance of the FloughAPI that will be passed to the user.
  * @param {Function} startFlow - The Flough.startFlow() API function
  */
-export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
+export default function flowClassBuilder(queue, mongoCon, FloughInstance, startFlow) {
+    let o = FloughInstance.o;
     let Logger = o.logger.func;
 
-    // Grabs the Job APIs so that Flow can start jobs
-    let jobAPI = require('./jobAPI')(queue, mongoCon, o);
+
 
     class Flow {
 
@@ -244,7 +244,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                      * Start the job.
                                      */
 
-                                    jobAPI.startJob(jobType, jobData)
+                                    FloughInstance.startJob(jobType, jobData)
                                         .then(job => {
 
                                             // When job is enqueued into Kue, relate the job to this flow.
