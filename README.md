@@ -113,6 +113,8 @@ be inserted into the `job.data._results` object and the previous job's result wi
 
 
 ### Flows
+A Flow is a chain of Jobs and/or Flows that contains steps and optionally [substeps](https://github.com/samhagman/flough#substeps).
+
 I am going to use a completely useful example of wanting to get a website's HTML and then tweet that (or at least what will fit in a tweet) at me.
 
 Before showing off a flow lets register another job so we can chain them together in a flow:
@@ -156,6 +158,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
         .job(2, 'tweet_something', { handle: '@hagmansam' })
+        .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
         .end()
         .then(function(flow) {
             done();
@@ -170,13 +173,17 @@ Several things to note about this flow:
 
 - You can pass options to a flow as the second parameter to `.startFlow()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
 
-- The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s have been called on the flow.
+- The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s and `.flow()`s have been called on the flow.
 
 - `flow.job()` is the same as `.startJob()` except it takes a number as its first parameter which is its *step* number.  More on this later.
+
+- `flow.flow()` is the same as `.startFlow()` except it takes a number as its first parameter which is its *step* number.  This entire flow (all steps, [substeps](https://github.com/samhagman/flough#substeps), `.job()`s and `.flow()`s) will have to be completed before it is considered finished
 
 - `.end()` returns a promise which will resolve when all the jobs have completed and injects the flow instance itself into the function.
 
 - Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
+
+
 
 
 ## Initializing a Flough Instance
@@ -275,11 +282,16 @@ flow.start()
     .job(1, 'read_a_file')
     .job(1, 'send_an_email)
     .job(2, 'write_a_file')
+    .flow(3, 'restart_a_server')
     .end()
 ```
 _Note: `.job()` and `.startJob()` do not require a data object to be passed in._
 
-In the above example both of the jobs with a step of 1 (`read_a_file` and `send_an_email`)  will be run in parallel.  When both of these jobs are complete then `write_a_file` will start.  There can be any number of steps and substeps in a flow.
+In the above example both of the jobs with a step of 1 (`read_a_file` and `send_an_email`)  will be run in parallel.  When both of these jobs are complete then `write_a_file` will start.  And finally when `write_a_file` is done, `restart_a_server` will run.  There can be any number of steps and substeps in a flow.
+
+To emphasize, **steps run in series while substeps (`.job()` and/or `.flow()`s with same step number) run in parallel.**
+
+Even fairly complex processes should be able to be modelled with steps, substeps, jobs and flows.
 
 
 ### Flow/Job Restarts
@@ -327,6 +339,67 @@ What `.search()` does is takes a string with space-separated search terms inside
 To perform a search where you want all jobs that **contain at least one of the search terms** you can pass `true` as the second argument like so:
 `Flough.search(string, true)`
 This will use the `.type('or')` functionality of [reds](https://github.com/tj/reds).
+
+### Dynamic Default Properties for Jobs and ~~Flows~~
+
+*Note: Flows do not currently support this feature.*
+
+Since jobs and flows are built to be reusable there is probably some default information that you want every job or flow to have rather than having to enter it every time you want to start a job or flow.  Dynamic Default Properties give you this option by allowing you to specify a function that will be run at job start time that returns an object to be merged with the data object you provided in the `.job('job_type', data_object)` call.  
+
+This has two main benefits:
+
+- Allows you to attach dynamic data to the job **before** it is put into queue.  This means that this data will be indexed and therefore searchable by `Flough.search()` and that it will automatically get persisted to MongoDB without you having to manually put it there inside the job you register.
+
+Also because you have access to the `job.data` **before** it is put into the queue, you have access to `job.data._uuid` which is the unique identification string that has been assigned to the job.  This allows you to use that UUID for whatever purposes you want for properties that you want to attach to `job.data`.
+
+- Allows you to attach default properties to `job.data` that can be overridden by passing in that field in your data object in your `.job('job_type', data_object)`.
+
+Here is an example:
+
+```node
+// Assuming Flough has been initialized
+Flough.registerJob('tweet_job_uuid', function(job, done, error) {
+
+    console.log(job.data.message)
+    console.log(job.data.handle)
+    Twitter.tweet({
+        message: job.data.message
+        handle: job.data.handle
+    }, function(err) {
+
+        if (err) {
+            error(err);
+        }
+        else {
+            done();
+        }
+    });
+
+}, function(jobData) {
+    return {
+        message: 'This is job UUID, ' + jobData._uud,
+        handle: '@nasa'
+    };
+});
+```
+
+```node
+
+// Assuming Flough has been initialized
+Flough.startJob('tweet_job_uuid', { handle: '@hagmansam' }).then(function(job) { job.save(); }));
+
+// When the job starts the two console.log()s would print the following:
+// Prints 'This is job UUID, 9d9f8g7d9df0f6s6d9f80`
+// Prints '@hagmansam'
+```
+Here you can see that the default message was used and includes the job's UUID and the default handle of `@nasa` was overridden with the handle `@samhagman`.
+
+Some things to note:
+
+- The dynamic property function must be passed as the third argument of `Flough.registerJob()` like `Flough.registerJob('job_type', jobFunction, objectReturningFunction)`.
+
+- The dynamic property function must return a JSONable object.
+
 
 # Tests
 
