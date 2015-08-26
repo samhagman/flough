@@ -27,7 +27,7 @@ export default function FlowSchemaBuilder(mongoose) {
             totalSteps:    { type: Number, required: false },
             jobType:       { type: String, required: false },
             jobData:       { type: Schema.Types.Mixed, required: true },
-            relatedJobs:   { type: Schema.Types.Mixed, required: true, default: {} },
+            relatedJobs:   { type: Schema.Types.Mixed, required: true },
             jobLogs:       [ JobLogSchema ],
             completed:     { type: Boolean, required: true, default: false }
         },

@@ -7,13 +7,14 @@ let _ = require('lodash');
  * The Flow class handles chains of Kue jobs so that they are executed only once and at the right time.
  * @param {Object} queue - Kue queue
  * @param {Object} mongoCon - Mongoose connection
- * @param {Object} o - User passed options
+ * @param {Object} FloughInstance - The instance of the FloughAPI that will be passed to the user.
+ * @param {Function} startFlow - The Flough.startFlow() API function
  */
-export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
+export default function flowClassBuilder(queue, mongoCon, FloughInstance, startFlow) {
+    let o = FloughInstance.o;
     let Logger = o.logger.func;
 
-    // Grabs the Job APIs so that Flow can start jobs
-    let jobAPI = require('./jobAPI')(queue, mongoCon, o);
+
 
     class Flow {
 
@@ -28,6 +29,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
             this.data = job.data;
             this.jobType = job.type;
             this.flowId = job.data._flowId;
+            this.parentFlowId = job.data._parentFlowId;
             this.stepsTaken = job.data._stepsTaken;
             this.substepsTaken = job.data._substepsTaken;
             this.completed = false;
@@ -124,7 +126,8 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                             substepsTaken: _this.substepsTaken,
                                             jobData:       _this.data,
                                             jobType:       _this.jobType,
-                                            relatedJobs:   {},
+                                            // Reinitialize with related jobs if this is a helper flow
+                                            relatedJobs:   _this.data._relatedJobs || {},
                                             jobLogs:       []
                                         })
                                         .then((flowDoc, err) => {
@@ -147,26 +150,9 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                     // Restart Flow with values that were saved to storage
                                     _this.stepsTaken = flowDoc.stepsTaken;
                                     _this.substepsTaken = flowDoc.substepsTaken;
-
-                                    // Remove relatedJobs that were added but their step/substep never completed
-                                    _this.relatedJobs = _(_this.relatedJobs)
-                                        .pick(_.range(_this.stepsTaken + 1))
-                                        .mapValues((value, key, obj) => {
-                                            if (key < _this.stepsTaken) {
-                                                return value;
-                                            }
-                                            else {
-                                                return _.pick(value, _this.substepsTaken);
-                                            }
-                                        })
-                                        .value()
-                                    ;
-
-                                    flowDoc.relatedJobs = _this.relatedJobs;
-                                    flowDoc.save(() => {
-                                        Logger.info(`[${_this.flowId}] Flow restarted.`);
-                                        resolve(_this);
-                                    });
+                                    _this.relatedJobs = flowDoc.relatedJobs;
+                                    Logger.info(`[${_this.flowId}] Flow restarted.`);
+                                    resolve(_this);
                                 }
                                 else {
                                     reject(new Error(`[${_this.flowId}] Something went very very wrong when start()ing Flow...`));
@@ -197,41 +183,38 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
         job(step, jobType, jobData) {
 
             let _this = this;
-            let substep;
+            Promise.all(_this.promised[ '0' ])
+                .then((promised) => {
+                    let relatedJobs = promised[ 0 ].relatedJobs;
+                    let substep;
 
-            /* Determine Step/Substep */
+                    /* Determine Step/Substep */
 
-            // If we already have substeps at this step, increase substeps by 1 and set substep to the result
-            if (_this.substeps[ step ]) {
-                _this.substeps[ step ] += 1;
-                substep = _this.substeps[ step ];
-            }
-            // If no substeps at this step, set them to 1 and set substep to 1
-            else {
-                _this.substeps[ step ] = 1;
-                substep = 1;
-            }
+                    // If we already have substeps at this step, increase substeps by 1 and set substep to the result
+                    if (_this.substeps[ step ]) {
+                        _this.substeps[ step ] += 1;
+                        substep = _this.substeps[ step ];
+                    }
+                    // If no substeps at this step, set them to 1 and set substep to 1
+                    else {
+                        _this.substeps[ step ] = 1;
+                        substep = 1;
+                    }
 
-            //Logger.debug(`Step: ${step}, Substep: ${substep}`);
+                    //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
-            /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
+                    let jobUUID = _.get(relatedJobs, `${step}.${substep}.data._uuid`, null);
 
-            // I never want to type job handler again...
-            _this.jobHandlers.push(() => {
+                    /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
 
-                // .handleJob() will eventually determine when and if to run this job based on step, substep, and
-                // previous completion
-                return _this.handleJob(step, substep, () => {
-                    return new Promise((jobResolve, jobReject) => {
-                        try {
+                    // I never want to type job handler again...
+                    _this.jobHandlers.push(() => {
 
-                            // Lookup this Flow in Mongo to see latest results of past jobs.
-                            _this.FlowModel.findById(_this.flowId, (error, flowDoc) => {
-                                if (error) {
-                                    jobReject(new Error(`Could not find Flow with ID ${_this.flowId} to get past results from for new job.`));
-                                }
-                                else {
-
+                        // .handleJob() will eventually determine when and if to run this job based on step, substep,
+                        // and previous completion
+                        return _this.handleJob(step, substep, () => {
+                            return new Promise((jobResolve, jobReject) => {
+                                try {
                                     /* Build data to attach to the Kue job's data. */
 
                                     // Attach step and substep information to the job.
@@ -239,12 +222,14 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                     jobData._substep = substep;
                                     jobData._flowId = _this.flowId;
 
-                                    // Attach past results to job's data before starting it, so users can access these.
-                                    jobData._relatedJobs = flowDoc.relatedJobs;
+
+                                    // Attach past results to job's data before starting it, so users can
+                                    // access these.
+                                    jobData._relatedJobs = relatedJobs;
 
                                     // Grab the previous step's results
                                     if (step > 1) {
-                                        jobData._lastJob = flowDoc.relatedJobs[ (step - 1).toString() ];
+                                        jobData._lastJob = relatedJobs[ (step - 1).toString() ];
                                     }
                                     // There was no previous step
                                     else {
@@ -252,19 +237,14 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                     }
 
                                     // Reuse the previous UUID if there is one
-                                    if (jobData._relatedJobs[ step ] &&
-                                        jobData._relatedJobs[ step ][ substep ] &&
-                                        jobData._relatedJobs[ step ][ substep ].data) {
-
-                                        jobData._uuid = jobData._relatedJobs[ step ][ substep ].data._uuid;
-                                    }
+                                    jobData._uuid = jobUUID;
 
 
                                     /**
                                      * Start the job.
                                      */
 
-                                    jobAPI.startJob(jobType, jobData)
+                                    FloughInstance.startJob(jobType, jobData)
                                         .then(job => {
 
                                             // When job is enqueued into Kue, relate the job to this flow.
@@ -290,16 +270,16 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                         })
                                     ;
                                 }
+                                catch (err) {
+                                    jobReject(err);
+                                }
                             });
-                        }
-                        catch (e) {
-                            jobReject(e);
-                        }
+                        });
                     });
-                });
-            });
+                })
+            ;
 
-            return _this;
+            return this;
         }
 
         /**
@@ -312,40 +292,38 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
         flow(step, flowType, jobData = {}) {
 
             let _this = this;
-            let substep;
 
-            /* Determine Step/Substep */
+            Promise.all(_this.promised[ '0' ])
+                .then((promised) => {
+                    let relatedJobs = promised[ 0 ].relatedJobs;
+                    let substep;
 
-            // If we already have substeps at this step, increase substeps by 1 and set substep to the result
-            if (_this.substeps[ step ]) {
-                _this.substeps[ step ] += 1;
-                substep = _this.substeps[ step ];
-            }
-            // If no substeps at this step, set them to 1 and set substep to 1
-            else {
-                _this.substeps[ step ] = 1;
-                substep = 1;
-            }
+                    /* Determine Step/Substep */
 
-            //Logger.debug(`Step: ${step}, Substep: ${substep}`);
+                    // If we already have substeps at this step, increase substeps by 1 and set substep to the result
+                    if (_this.substeps[ step ]) {
+                        _this.substeps[ step ] += 1;
+                        substep = _this.substeps[ step ];
+                    }
+                    // If no substeps at this step, set them to 1 and set substep to 1
+                    else {
+                        _this.substeps[ step ] = 1;
+                        substep = 1;
+                    }
 
-            /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
+                    let jobUUID = _.get(relatedJobs, `${step}.${substep}.data._uuid`, null);
+                    //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
-            // I never want to type job handler again...
-            _this.jobHandlers.push(() => {
+                    /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
 
-                // .handleJob() will eventually determine when and if to run this job based on step, substep, and
-                // previous completion
-                return _this.handleJob(step, substep, () => {
-                    return new Promise((jobResolve, jobReject) => {
-                        try {
+                    // I never want to type job handler again...
+                    _this.jobHandlers.push(() => {
 
-                            // Lookup this Flow in Mongo to see latest results of past jobs.
-                            _this.FlowModel.findById(_this.flowId, (error, flowDoc) => {
-                                if (error) {
-                                    jobReject(new Error(`Could not find Flow with ID ${_this.flowId} to get past results from for new job.`));
-                                }
-                                else {
+                        // .handleJob() will eventually determine when and if to run this job based on step, substep,
+                        // and previous completion
+                        return _this.handleJob(step, substep, () => {
+                            return new Promise((jobResolve, jobReject) => {
+                                try {
 
                                     /* Build data to attach to the Kue job's data. */
 
@@ -354,14 +332,19 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                     jobData._substep = substep;
 
                                     // UNLIKE IN .job(), reuse the previous flowId if there is one.
-                                    jobData._flowId = _.get(flowDoc.relatedJobs, `${step}.${substep}.data._flowId`, null);
+                                    jobData._flowId = _.get(relatedJobs, `${step}.${substep}.data._flowId`, null);
 
-                                    // Attach past results to job's data before starting it, so users can access these.
-                                    jobData._relatedJobs = flowDoc.relatedJobs;
+                                    // Reinitialize flow with the correct steps/substeps taken.
+                                    jobData._stepsTaken = _.get(relatedJobs, `${step}.${substep}.data._stepsTaken`, null);
+                                    jobData._substepsTaken = _.get(relatedJobs, `${step}.${substep}.data._substepsTaken`, null);
+
+                                    // Attach past results to job's data before starting it, so users can
+                                    // access these.
+                                    jobData._relatedJobs = _.get(relatedJobs, `${step}.${substep}`, null);
 
                                     // Grab the previous step's results
                                     if (step > 1) {
-                                        jobData._lastJob = flowDoc.relatedJobs[ (step - 1).toString() ];
+                                        jobData._lastJob = relatedJobs[ (step - 1).toString() ];
                                     }
                                     // There was no previous step
                                     else {
@@ -369,7 +352,8 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                     }
 
                                     // Reuse the previous UUID if there is one
-                                    jobData._uuid = _.get(jobData._relatedJobs, `${step}.${substep}.data._uuid`, null);
+                                    jobData._uuid = jobUUID;
+                                    jobData._parentFlowId = _this.flowId;
 
                                     /**
                                      * Start the job.
@@ -401,15 +385,15 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                         })
                                     ;
                                 }
+                                catch (err) {
+                                    jobReject(err);
+                                }
                             });
-                        }
-                        catch (e) {
-                            jobReject(e);
-                        }
+                        });
                     });
-                });
-            });
 
+                })
+            ;
             return _this;
         }
 
@@ -500,33 +484,44 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
 
             let _this = this;
 
-            // If this substep has a related job already, reset it's values
-            if (_.has(_this.relatedJobs, `${step}.${substep}`)) {
-                _this.relatedJobs[ step ][ substep ] = { data: job.data, result: null };
-            }
-            // Else initialize the results holder for this STEP and SUBSTEP to hold the eventual result for this job.
-            else {
-                _this.relatedJobs[ step ] = { [substep]: { data: job.data, result: null } };
-            }
 
             return new Promise((resolve, reject) => {
-                _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
-                    if (err) {
-                        Logger.error(`[${_this.flowId}] Error relating job to Flow`);
-                        Logger.error(`[${_this.flowId}] ${err}`);
-                        reject(err);
-                    }
-                    else {
-                        // Push job on to the activeJobs stack
-                        _this.activeJobs.push[ job ];
+                // Push job on to the activeJobs stack
+                _this.activeJobs.push[ job ];
 
-                        // Updated flow's related jobs to include this substep's job
-                        flowDoc.relatedJobs = _this.relatedJobs;
-                        flowDoc.markModified('relatedJobs');
-                        flowDoc.save(() => {
-                            resolve(job)
+                _this.FlowModel.findOneAndUpdate({ _id: _this.flowId }, {
+                    $set: {
+                        [`relatedJobs.${step}.${substep}`]: {
+                            data:   job.data,
+                            result: null
+                        }
+                    }
+                }, { new: true, upsert: true }, (err, flowDoc) => {
+                    if (err) {
+                        Logger.error(`Error updating relatedJobs: ${err}`);
+                        reject(job);
+                    }
+                    // If this job is part of a helper flow, update parent flows relatedJobs with this info
+                    else if (_this.parentFlowId) {
+
+                        _this.FlowModel.findOneAndUpdate({ _id: _this.parentFlowId }, {
+                            $set: {
+                                [`relatedJobs.${_this.data._step}.${_this.data._substep}.data._relatedJobs`]: flowDoc.relatedJobs
+                            }
+                        }, { new: true, upsert: true }, (err, parentFlowDoc) => {
+                            if (err) {
+                                Logger.error(`Error updating parent flow's relatedJobs: ${err}`);
+                                reject(job);
+                            }
+                            else {
+                                resolve(job);
+                            }
                         });
                     }
+                    else {
+                        resolve(job);
+                    }
+
                 });
             });
         }
@@ -534,29 +529,79 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
         /**
          * Completes this Flow
          * 0. Waits for start() to finish, which includes any promises passed to start() by the user
-         * 1. Initiates the jobHandler promises by calling all jobHandler functions (which return promises)
-         * 2. Waits for all of the jobHandler promises to be done, that were just created.
-         * 3. Then starts to run the steps of the Flow, one step at a time, using a recursive function that only calls
+         * 1. Cleans up the relatedJobs that were not completed if this flow restarted otherwise is a noop
+         * 2. Initiates the jobHandler promises by calling all jobHandler functions (which return promises)
+         * 3. Waits for all of the jobHandler promises to be done, that were just created.
+         * 4. Then starts to run the steps of the Flow, one step at a time, using a recursive function that only calls
          * itself once all the promises it initiated at a step are complete.
-         * 4. Update Mongo and this instance of Flow that this flow has finished, once there are no more steps to call.
+         * 5. Update Mongo and this instance of Flow that this flow has finished, once there are no more steps to call.
          * @returns {bluebird|exports|module.exports|Flow}
          */
         end() {
 
             let _this = this;
 
-            return new Promise((resolve, reject) => {
+            /**
+             * Removes related jobs that were not completed before.  This is run inside of end() because jobs use their
+             * uncompleted related jobs to reuse their UUIDs and/or flowIds.
+             * @returns {bluebird|exports|module.exports}
+             */
+            function cleanupRelatedJobs() {
 
+                return new Promise((resolve, reject) => {
+
+                    _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
+                        if (err) {
+                            reject(err);
+                        }
+                        else if (flowDoc) {
+                            // Remove relatedJobs that were added but their step/substep never completed
+                            _this.relatedJobs = _(_this.relatedJobs)
+                                .pick(_.range(_this.stepsTaken + 1))
+                                .mapValues((value, key, obj) => {
+                                    if (key < _this.stepsTaken) {
+                                        return value;
+                                    }
+                                    else {
+                                        return _.pick(value, _this.substepsTaken);
+                                    }
+                                })
+                                .value()
+                            ;
+
+                            flowDoc.relatedJobs = _this.relatedJobs;
+                            flowDoc.markModified('relatedJobs');
+                            flowDoc.save((err) => {
+                                if (err) {
+                                    reject(err);
+                                }
+                                else {
+                                    resolve();
+                                }
+                            });
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
+
+                });
+
+            }
+
+            return new Promise((resolve, reject) => {
                 // 0.
                 Promise.all(_this.promised[ '0' ])
+                    // 1.
+                    .then(cleanupRelatedJobs)
                     .then(() => {
-                        // 1.
+                        // 2.
                         let jobHandlerPromises = _this.jobHandlers.map((promiseReturner) => promiseReturner());
 
-                        // 2.
+                        // 3.
                         Promise.all(jobHandlerPromises)
                             .then(() => {
-                                Logger.info(`[${this.flowId}] STARTING JOBS!`);
+                                Logger.info(`[${_this.flowId}] STARTING JOBS!`);
                                 // Start running steps...
                                 unpackPromises(1, resolve, reject);
                             })
@@ -583,7 +628,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                 //Logger.debug(`PROM RETURNERS ${step}: ${promiseReturners}`);
 
 
-                                // 3.
+                                // 4.
                                 // Waits for all the promises that represent jobs to complete
                                 Promise.all(
                                     // Initiate promises by calling the promise returning functions inside
@@ -616,7 +661,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                 reject(new Error(`[${_this.flowId}][${_this.jobType}] STEPS OUT OF ORDER AT STEP: ${step}`));
                             }
                             else {
-                                // 4.
+                                // 5.
                                 _this.FlowModel.findByIdAndUpdate(_this.flowId, { completed: true }, { new: true })
                                     .then((flowDoc, err) => {
                                         if (err) {
@@ -650,14 +695,11 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                     resolve(null);
                 }
                 else {
-                    // Attach this job's result to the Flow Instance
-                    _this.relatedJobs[ job.data._step ][ job.data._substep ].result = jobResult;
-
                     // Create field to update
                     const relatedJobResultField = `relatedJobs.${job.data._step}.${job.data._substep}.result`;
 
                     // Find this Flow's doc in Mongo and update the substeps taken
-                    this.FlowModel.findByIdAndUpdate(_this.flowId, {
+                    _this.FlowModel.findByIdAndUpdate(_this.flowId, {
                         $addToSet: { substepsTaken: job.data._substep },
                         $set:      { [relatedJobResultField]: jobResult }
                     }, { new: true })
@@ -677,8 +719,8 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
                                 _this.substepsTaken = flowDoc.substepsTaken;
 
                                 // Update the Job in Mongo to be complete.
-                                this.JobModel.findOneAndUpdate({ _id: job.data._uuid }, {
-                                    complete: true,
+                                _this.JobModel.findByIdAndUpdate(job.data._uuid, {
+                                    completed: true,
                                     result:   jobResult
                                 }, { new: true })
                                     .then((jobDoc, err) => {
@@ -710,7 +752,7 @@ export default function flowClassBuilder(queue, mongoCon, o, startFlow) {
             return new Promise((resolve, reject) => {
 
                 // Update the mongo doc's stepsTaken and substepsTaken
-                this.FlowModel.findByIdAndUpdate(_this.flowId, {
+                _this.FlowModel.findByIdAndUpdate(_this.flowId, {
                     stepsTaken:    _this.stepsTaken + 1,
                     substepsTaken: []
                 }, { new: true })

@@ -3,25 +3,35 @@ let kue = require('kue');
 let _ = require('lodash');
 let ObjectId = require('mongoose').Types.ObjectId;
 
+
 /**
  * Builds the Jobs APIs
  * @param {Object} queue - Kue queue
  * @param {Object} mongoCon - Mongoose connection
- * @param {Object} o - User passed options to Flough
+ * @param {Object} FloughInstance - FloughAPI instance that is eventually passed to the user.
  * @returns {{registerJob, startJob}}
  */
-export default function jobAPIBuilder(queue, mongoCon, o) {
+export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
+    let o = FloughInstance.o;
     let Logger = o.logger.func;
     let JobModel = mongoCon.model('job');
     let jobLogger = require('./jobLogger')(mongoCon, Logger);
 
+    FloughInstance._dynamicPropFuncs = {};
+
+
     /**
      * Allows a User to register a job function for repeated use by .startJob()
      * @param {String} jobType - The string that this job should be registered under
+     * @param {Function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     *  that will be merged into the job.data of all jobs of this type.
      * @param {Function} jobFunc - The User passed function that holds the job's logic
      */
-    function registerJob(jobType, jobFunc) {
+    function registerJob(jobType, jobFunc, dynamicPropFunc = () => {return {};}) {
+
+        // Add the function to the dynamic properties functions list.
+        FloughInstance._dynamicPropFuncs[jobType] = dynamicPropFunc;
 
         /**
          * Wraps the user-given job in a promise,
@@ -107,6 +117,22 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
     }
 
     /**
+     * Create the kue job but first add any dynamic properties.
+     * @param jobType
+     * @param data
+     * @returns {bluebird|exports|module.exports}
+     */
+    function createJob(jobType, data) {
+
+        let dynamicProperties = FloughInstance._dynamicPropFuncs[jobType](data);
+        let mergedProperties = _.merge(data, dynamicProperties);
+
+        return new Promise((resolve, reject) => {
+            resolve(queue.create(`job:${jobType}`, mergedProperties));
+        })
+    }
+
+    /**
      * Starts a job that had been previously registered with Flough
      * @param {String} jobType - Type of job to start
      * @param [data] - Data context to be attached to the job
@@ -167,20 +193,19 @@ export default function jobAPIBuilder(queue, mongoCon, o) {
                     }
                     else {
                         // Resolve with a Kue job that still needs to be .save()'d for it to run.
-                        resolve(queue.create(`job:${jobType}`, data));
+                        resolve(createJob(jobType, data));
                     }
                 });
             }
-            else{
-                resolve(queue.create(`job:${jobType}`, data));
+            else {
+                resolve(createJob(jobType, data));
             }
         });
     }
 
     // Setup, attach to, and return Job API object
-    let jobAPI = {};
-    jobAPI.registerJob = registerJob;
-    jobAPI.startJob = startJob;
+    FloughInstance.registerJob = registerJob;
+    FloughInstance.startJob = startJob;
 
-    return jobAPI;
+    return FloughInstance;
 }
