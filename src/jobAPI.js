@@ -33,9 +33,6 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
         // Add the function to the dynamic properties functions list.
         FloughInstance._dynamicPropFuncs[jobType] = dynamicPropFunc;
 
-        Logger.error('_dynamicPropFuncs');
-        Logger.error(FloughInstance._dynamicPropFuncs);
-
         /**
          * Wraps the user-given job in a promise,
          * then attaches some required Flough fields to the data,
@@ -129,10 +126,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
         let dynamicProperties = FloughInstance._dynamicPropFuncs[jobType](data);
         let mergedProperties = _.merge(data, dynamicProperties);
-        Logger.error('props');
-        Logger.error(FloughInstance._dynamicPropFuncs);
-        Logger.error(dynamicProperties);
-        Logger.error(mergedProperties);
+
         return new Promise((resolve, reject) => {
             resolve(queue.create(`job:${jobType}`, mergedProperties));
         })

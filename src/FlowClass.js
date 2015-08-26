@@ -488,7 +488,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             return new Promise((resolve, reject) => {
                 // Push job on to the activeJobs stack
                 _this.activeJobs.push[ job ];
-                Logger.error(`Relating job ${job.data._uuid} at ${step}.${substep}`);
 
                 _this.FlowModel.findOneAndUpdate({ _id: _this.flowId }, {
                     $set: {
@@ -515,7 +514,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 reject(job);
                             }
                             else {
-                                Logger.error(parentFlowDoc);
                                 resolve(job);
                             }
                         });
@@ -730,9 +728,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             reject(err);
                                         }
                                         else {
-                                            Logger.error('Completed Job:');
-                                            Logger.error(jobDoc);
-
                                             resolve(job);
                                         }
                                     })
