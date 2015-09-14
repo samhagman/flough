@@ -295,7 +295,7 @@ function attachEvents(queue, FloughInstance) {
                     FloughInstance.emit(`${job.data._flowId}:failed`, job);
                 });
             })
-            .on('job promotion', () => {
+            .on('job promotion', (id) => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job promotion', ...args);
                 kue.Job.get(id, (err, job) => {
@@ -304,7 +304,7 @@ function attachEvents(queue, FloughInstance) {
                     FloughInstance.emit(`${job.data._flowId}:promotion`, job);
                 });
             })
-            .on('job progress', () => {
+            .on('job progress', (id) => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job progress', ...args);
                 kue.Job.get(id, (err, job) => {
@@ -313,7 +313,7 @@ function attachEvents(queue, FloughInstance) {
                     FloughInstance.emit(`${job.data._flowId}:progress`, job);
                 });
             })
-            .on('job failed attempt', () => {
+            .on('job failed attempt', (id) => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job failed attempt', ...args);
                 kue.Job.get(id, (err, job) => {
@@ -322,7 +322,7 @@ function attachEvents(queue, FloughInstance) {
                     FloughInstance.emit(`${job.data._flowId}:failed attempt`, job);
                 });
             })
-            .on('job remove', () => {
+            .on('job remove', (id) => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job remove', ...args);
                 kue.Job.get(id, (err, job) => {
