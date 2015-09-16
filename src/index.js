@@ -3,51 +3,62 @@ const events = require('events');
 const Promise = require('bluebird');
 const redis = require('redis');
 
+let FloughAPIObject;
+
 /**
  * Returns the FloughBuilder object, which just has one function: init(o);
  * @returns {*}
  */
 export default function floughBuilder() {
+    console.log('called');
+    console.log(FloughAPIObject);
+    if (FloughAPIObject) {
+        return FloughAPIObject;
+    }
+    else {
 
-    return {
-        // Initialize a Flough instance using the passed options
-        init(o) {
+        return {
+            // Initialize a Flough instance using the passed options
+            init(o) {
 
-            // Base class that inherits from the event emitter class
-            class FloughAPI {
+                // Base class that inherits from the event emitter class
+                class FloughAPI {
 
-                constructor() {
-                    events.EventEmitter.call(this);
+                    constructor() {
+                        events.EventEmitter.call(this);
+                    }
                 }
+                FloughAPI.prototype.__proto__ = events.EventEmitter.prototype;
+
+                // Setup defaults
+                FloughAPI.prototype.o = setupDefaults(o);
+
+                // Setup Kue queue
+                return setupKue(FloughAPI.prototype.o)
+                    .then((queue) => {
+                        // Setup and attach storage and Redis clients to Flough Class
+                        return [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ];
+                    }).spread((queue, storageClient, redisClient) => {
+
+                        // Setup search functionality for Flough Class
+                        FloughAPI.prototype.search = require('./searcher')(queue, redisClient, FloughAPI.prototype.o);
+
+                        // Create a Flough Instance
+                        let FloughInstance = new FloughAPI();
+
+                        // Setup and attach the APIs for Flows and Jobs
+                        FloughInstance = require('./jobAPI')(queue, storageClient, FloughInstance);
+                        FloughInstance = require('./flowAPI')(queue, storageClient, FloughInstance);
+
+                        // Attach event functionality to Flough Instance and return the modified Flough Instance
+                        FloughAPIObject = attachEvents(queue, FloughInstance);
+
+                        return FloughAPIObject;
+                    });
+
             }
-            FloughAPI.prototype.__proto__ = events.EventEmitter.prototype;
-
-            // Setup defaults
-            FloughAPI.prototype.o = setupDefaults(o);
-
-            // Setup Kue queue
-            return setupKue(FloughAPI.prototype.o)
-                .then((queue) => {
-                    // Setup and attach storage and Redis clients to Flough Class
-                    return [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ];
-                }).spread((queue, storageClient, redisClient) => {
-
-                    // Setup search functionality for Flough Class
-                    FloughAPI.prototype.search = require('./searcher')(queue, redisClient, FloughAPI.prototype.o);
-
-                    // Create a Flough Instance
-                    let FloughInstance = new FloughAPI();
-
-                    // Setup and attach the APIs for Flows and Jobs
-                    FloughInstance = require('./jobAPI')(queue, storageClient, FloughInstance);
-                    FloughInstance = require('./flowAPI')(queue, storageClient, FloughInstance);
-
-                    // Attach event functionality to Flough Instance and return the modified Flough Instance
-                    return attachEvents(queue, FloughInstance);
-                });
-
-        }
-    };
+        };
+    }
 
 }
 
