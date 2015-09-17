@@ -10,8 +10,6 @@ let FloughAPIObject;
  * @returns {*}
  */
 export default function floughBuilder() {
-    console.log('called');
-    console.log(FloughAPIObject);
     if (FloughAPIObject) {
         return FloughAPIObject;
     }
