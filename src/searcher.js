@@ -41,43 +41,65 @@ export default function setupKueSearcher(queue, redisClient, {logger}) {
      */
     function searchKue(query, union = false) {
 
-        // TODO modify query to only return active jobs in the queue
-        return new Promise((resolve, reject) => {
-            let searcher = getSearch(redisClient).query(query);
+        if (query === '') {
 
-            if (union) {
-                searcher.type('union');
-            }
+            return new Promise((resolve, reject) => {
 
-            searcher.end(function(err, ids) {
-                if (err) {
-                    Logger.error(err);
-                    reject(err);
+                kue.Job.range(0, -1, '', (err, jobs) => {
+
+                    if (err) {
+                        Logger.error('Error searching for and returning all Kue jobs.');
+                        Logger.error(err);
+                        reject(err);
+                    }
+                    else {
+                        resolve(jobs);
+                    }
+
+                });
+            });
+        }
+        else {
+
+            // TODO modify query to only return active jobs in the queue
+            return new Promise((resolve, reject) => {
+                let searcher = getSearch(redisClient).query(query);
+
+                if (union) {
+                    searcher.type('union');
                 }
-                else {
-                    let promArray = [];
 
-                    // Create array of promises that return the Jobs with the found ids
-                    ids.forEach((jobId) => {
-                        promArray.push(new Promise((resolve, reject) => {
-                            kue.Job.get(jobId, (err, job) => {
-                                if (err) {
-                                    Logger.error(`[ERROR SEARCHING KUE] ${job}`);
-                                    reject(err);
-                                }
-                                resolve(job);
-                            });
-                        }));
-                    });
+                searcher.end(function(err, ids) {
+                    if (err) {
+                        Logger.error(err);
+                        reject(err);
+                    }
+                    else {
 
-                    // When all jobs are retrieved, resolve with all the jobs.
-                    Promise.all(promArray).then((jobs) => {
-                        resolve(jobs)
-                    }).catch((err) => reject(err));
-                }
-            })
-            ;
-        });
+                        let promArray = [];
+
+                        // Create array of promises that return the Jobs with the found ids
+                        ids.forEach((jobId) => {
+                            promArray.push(new Promise((resolve, reject) => {
+                                kue.Job.get(jobId, (err, job) => {
+                                    if (err) {
+                                        Logger.error(`[ERROR SEARCHING KUE] ${job}`);
+                                        reject(err);
+                                    }
+                                    resolve(job);
+                                });
+                            }));
+                        });
+
+                        // When all jobs are retrieved, resolve with all the jobs.
+                        Promise.all(promArray).then((jobs) => {
+                            resolve(jobs)
+                        }).catch((err) => reject(err));
+                    }
+                })
+                ;
+            });
+        }
     }
 
 
