@@ -1,6 +1,7 @@
 const reds = require('reds');
 const Promise = require('bluebird');
 const kue = require('kue');
+const _ = require('lodash');
 
 
 let search;
@@ -28,7 +29,7 @@ function getSearch(redisClient) {
  * @param {Object} logger - Internal Flough logger
  * @returns {searchKue}
  */
-export default function setupKueSearcher(queue, redisClient, {logger}) {
+function setupKueSearcher(queue, redisClient, {logger}, storageClient) {
 
     const Logger = logger.func;
 
@@ -104,4 +105,79 @@ export default function setupKueSearcher(queue, redisClient, {logger}) {
 
 
     return searchKue;
+}
+
+function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
+
+    const Logger = logger.func;
+    const jobModel = storageClient.model('job');
+
+    function searchJobs(searchParameters) {
+
+        return new Promise((resolve, reject) => {
+
+            let {jobIds, jobTypes, completed} = searchParameters;
+
+            if (!_.isArray(jobIds)) {
+                reject('jobIds must be an array');
+            }
+            if (!_.isArray(jobTypes)) {
+                reject('jobTypes must be an array');
+            }
+
+            let searchOptions = {};
+
+            if (jobIds.length !== 0) {
+
+                searchOptions.jobId = {
+                    $in: jobIds
+                };
+            }
+            if (jobTypes.length !== 0) {
+
+                searchOptions.type = {
+                    $in: jobTypes
+                };
+            }
+            if (_.has(searchParameters, 'completed')) {
+                searchOptions.completed = completed;
+            }
+
+            jobModel.find(searchOptions, (err, jobs) => {
+                    if (err) {
+                        Logger.error(err);
+                        reject(err);
+                    }
+                    else {
+                        resolve(jobs);
+                    }
+                })
+            ;
+        });
+
+    }
+
+    return searchJobs;
+}
+
+function setupFlowSearcher(queue, redisClient, options, storageClient) {
+
+    function searchFlows() {
+        return new Promise((resolve, reject) => {
+            resolve();
+        });
+    }
+
+    return searchFlows;
+
+}
+
+
+export default function setupSearchers(queue, redisClient, options, storageClient) {
+
+    return {
+        searchKue: setupKueSearcher(queue, redisClient, options, storageClient),
+        searchJobs: setupJobSearcher(queue, redisClient, options, storageClient),
+        searchFlows: setupFlowSearcher(queue, redisClient, options, storageClient)
+    };
 }

@@ -39,7 +39,9 @@ export default function floughBuilder() {
                     }).spread((queue, storageClient, redisClient) => {
 
                         // Setup search functionality for Flough Class
-                        FloughAPI.prototype.search = require('./searcher')(queue, redisClient, FloughAPI.prototype.o);
+                        let searchFunctions = require('./searcher')(queue, redisClient, FloughAPI.prototype.o, FloughAPI.prototype.storageClient);
+                        FloughAPI.prototype.searchJobs = searchFunctions.searchJobs;
+                        FloughAPI.prototype.searchKue = searchFunctions.searchKue;
 
                         // Create a Flough Instance
                         let FloughInstance = new FloughAPI();
