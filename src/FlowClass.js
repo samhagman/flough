@@ -556,8 +556,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         }
                         else if (flowDoc) {
 
-                            Logger.error(_this.relatedJobs);
-
                             // Remove relatedJobs that were added but their step/substep never completed
                             _this.relatedJobs = _(_this.relatedJobs)
                                 .pick(_.range(1, _this.stepsTaken + 2))
@@ -571,8 +569,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 })
                                 .value()
                             ;
-
-                            Logger.error(_this.relatedJobs);
 
                             flowDoc.relatedJobs = _this.relatedJobs;
                             flowDoc.save((err) => {
