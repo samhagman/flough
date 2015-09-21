@@ -225,7 +225,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                     // Attach past results to job's data before starting it, so users can
                                     // access these.
-                                    jobData._relatedJobs = relatedJobs;
+                                    jobData._relatedJobs = _.get(relatedJobs, `${step - 1}`, {});
 
                                     // Grab the previous step's results
                                     if (step > 1) {
@@ -496,7 +496,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             result: null
                         }
                     }
-                }, { new: true, upsert: true }, (err, flowDoc) => {
+                }, { new: true }, (err, flowDoc) => {
                     if (err) {
                         Logger.error(`Error updating relatedJobs: ${err}`);
                         reject(job);
@@ -555,9 +555,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             reject(err);
                         }
                         else if (flowDoc) {
+
                             // Remove relatedJobs that were added but their step/substep never completed
                             _this.relatedJobs = _(_this.relatedJobs)
-                                .pick(_.range(_this.stepsTaken + 1))
+                                .pick(_.range(1, _this.stepsTaken + 2))
                                 .mapValues((value, key, obj) => {
                                     if (key < _this.stepsTaken) {
                                         return value;
@@ -570,7 +571,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             ;
 
                             flowDoc.relatedJobs = _this.relatedJobs;
-                            flowDoc.markModified('relatedJobs');
                             flowDoc.save((err) => {
                                 if (err) {
                                     reject(err);
