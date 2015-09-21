@@ -61,7 +61,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          * @param job
          * @returns {bluebird|exports|module.exports}
          */
-        const storeJobId = function(job) {
+        const updateJobInMongo = function(job) {
             return new Promise((resolve, reject) => {
                 JobModel.findById(job.data._uuid, (err, jobDoc) => {
                     if (err) {
@@ -70,10 +70,11 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                     }
                     else if (jobDoc) {
                         jobDoc.jobId = job.id;
-                        jobDoc.save();
+                        jobDoc.data = job.data;
                         if (jobDoc.jobLogs.length !== 0) {
                             jobLogger('Job restarted.', job.data._uuid, job.id);
                         }
+                        jobDoc.save();
                         resolve(job);
                     }
                     else {
@@ -96,13 +97,13 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
             // If in devMode, do not catch errors let the process crash
             if (o.devMode) {
-                storeJobId(job)
+                updateJobInMongo(job)
                     .then(jobWrapper)
                     .then((result) => done(null, result));
             }
             // If in production mode, catch errors to prevent crashing
             else {
-                storeJobId(job)
+                updateJobInMongo(job)
                     .then(jobWrapper)
                     .then((result) => done(null, result))
                     .catch(err => {
