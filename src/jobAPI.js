@@ -71,9 +71,6 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                     else if (jobDoc) {
                         jobDoc.jobId = job.id;
                         jobDoc.data = job.data;
-                        if (jobDoc.jobLogs.length !== 0) {
-                            jobLogger('Job restarted.', job.data._uuid, job.id);
-                        }
                         jobDoc.save();
                         resolve(job);
                     }
@@ -176,6 +173,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
             else {
                 jobFields._flowId = 'NoFlow';
                 data._flowId = 'NoFlow';
+                data._flowType = 'NoFlow';
             }
 
             // If no title was passed, set title to the job's type

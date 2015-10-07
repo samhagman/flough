@@ -15,64 +15,107 @@ export default function jobLogFactory(mongoCon, Logger) {
     /**
      * Logs messages to both the redis job and optionally the persistent storage's job
      * @param {String} msgString - The message to be logged
-     * @param {String} jobUUID - The job's UUID the message belongs to.
+     * @param {String} UUID - The job's UUID the message belongs to.
      * @param {Number} [jobId] - Optionally pass a Kue jobId to force jobLogger to use.
      */
-    function jobLogger(msgString, jobUUID, jobId) {
+    function jobLogger(msgString, UUID, jobId) {
 
-        if (jobUUID) {
-            // Find job based on UUID
-            JobModel.findById(jobUUID, (err, jobDoc) => {
+        //Logger.debug('msgString', msgString);
+        //Logger.debug('UUID', UUID);
+        //Logger.debug('jobId', jobId);
+
+        // Find the Kue job and log the message onto it.
+        const logToKueJob = function logToKueJob(kueJobId, msgString) {
+            kue.Job.get(kueJobId, function(err, job) {
                 if (err) {
-                    Logger.error(`Error getting stored job with UUID ${jobUUID} for jobLogger(): ${err}`);
-                }
-                else if (!jobDoc) {
-                    Logger.error(`Error getting stored job with UUID ${jobUUID} for jobLogger(): No job document with that UUID found.`);
+                    Logger.error(
+                        `Error getting job ${kueJobId} in Kue with UUID ${UUID} for jobLogger: ${err}
+                         msg:${msgString}, jobId: ${jobId}`);
                 }
                 else {
+                    job.log(msgString);
+                }
+            });
+        };
 
-                    // Push the message into the docs job logs
-                    jobDoc.jobLogs.push({ message: msgString });
+        if (UUID) {
+            let kueJobId = jobId || null;
 
-                    // Find the Kue job and log the message onto it.
-                    kue.Job.get(jobId ? jobId : jobDoc.jobId, function(err, job) {
-                        if (err) {
-                            Logger.error(`Error getting job ${jobDoc.jobId} in Kue with UUID ${jobUUID} for jobLogger: ${err}`);
-                        }
-                        else {
-                            job.log(msgString);
-                        }
-                    });
-
-                    // Find Flow this job belongs to, if it does belong to a flow
-                    if (FlowModel.isObjectId(jobDoc.flowId)) {
-                        FlowModel.findById(jobDoc.flowId)
+            // Find job based on UUID
+            JobModel.findById(UUID, (err, jobDoc) => {
+                if (err) {
+                    Logger.error(`Error getting stored job with UUID ${UUID} for jobLogger(): ${err}`);
+                }
+                else {
+                    if (!jobDoc) {
+                        FlowModel.findById(UUID)
                             .then((flowDoc, err) => {
                                 if (err) {
-                                    Logger.error(`Error getting flow ${jobDoc.flowId} for job ${jobUUID}: ${err}`);
+                                    Logger.error(`Error getting flow ${jobDoc.flowId} for job ${UUID}: ${err}`);
+                                }
+                                else if (!flowDoc) {
+                                    Logger.error(`Error getting stored flow with UUID ${UUID} for jobLogger(): No flow document with that UUID found.`);
+
                                 }
                                 else if (flowDoc) {
 
+                                    kueJobId = flowDoc.jobId;
+
+                                    logToKueJob(kueJobId, msgString);
+
                                     // Push message into the flow doc's job logs
                                     flowDoc.jobLogs.push({
-                                        jobId,
-
-                                        step:       job.step,
-                                        personHuid: job.data.personHuid,
-                                        message:    msgString
+                                        step:    flowDoc.step,
+                                        message: msgString
                                     });
 
                                     flowDoc.save();
 
                                 }
                                 else {
-                                    Logger.error(`Error getting flow ${jobDoc.flowId} for job ${jobUUID}: ${err}`);
+                                    Logger.error(`Error getting flow ${jobDoc.flowId} for job ${UUID}: ${err}`);
                                 }
                             })
                         ;
                     }
+                    else {
+                        // Push the message into the docs job logs
+                        jobDoc.jobLogs.push({ message: msgString });
 
-                    jobDoc.save();
+                        kueJobId = jobDoc.jobId;
+
+                        logToKueJob(kueJobId, msgString);
+
+                        // Find Flow this job belongs to, if it does belong to a flow
+                        if (FlowModel.isObjectId(jobDoc.flowId)) {
+                            FlowModel.findById(jobDoc.flowId)
+                                .then((flowDoc, err) => {
+                                    if (err) {
+                                        Logger.error(`Error getting flow ${jobDoc.flowId} for job ${UUID}: ${err}`);
+                                    }
+                                    else if (flowDoc) {
+
+                                        // Push message into the flow doc's job logs
+                                        flowDoc.jobLogs.push({
+                                            jobId: kueJobId,
+
+                                            step:       job.step,
+                                            personHuid: job.data.personHuid,
+                                            message:    msgString
+                                        });
+
+                                        flowDoc.save();
+
+                                    }
+                                    else {
+                                        Logger.error(`Error getting flow ${jobDoc.flowId} for job ${UUID}: ${err}`);
+                                    }
+                                })
+                            ;
+                        }
+
+                        jobDoc.save();
+                    }
                 }
             });
         }
@@ -80,6 +123,8 @@ export default function jobLogFactory(mongoCon, Logger) {
             throw new Error('job uuid is a required parameter for jobLogger() to be able to log.');
         }
     }
+
+
 
     return jobLogger;
 }

@@ -116,24 +116,33 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
 
         return new Promise((resolve, reject) => {
 
-            let {jobIds, jobTypes, completed} = searchParameters;
+            let {jobIds, jobUUIDs, jobTypes, completed} = searchParameters;
 
-            if (!_.isArray(jobIds)) {
+            if (jobUUIDs && !_.isArray(jobUUIDs)) {
+                reject('jobUUIDs must be an array');
+            }
+            if (jobIds && !_.isArray(jobIds)) {
                 reject('jobIds must be an array');
             }
-            if (!_.isArray(jobTypes)) {
+            if (jobTypes && !_.isArray(jobTypes)) {
                 reject('jobTypes must be an array');
             }
 
             let searchOptions = {};
 
-            if (jobIds.length !== 0) {
+            if (jobUUIDs && jobUUIDs.length !== 0) {
+
+                searchOptions['data._uuid'] = {
+                    $in: jobUUIDs
+                };
+            }
+            if (jobIds && jobIds.length !== 0) {
 
                 searchOptions.jobId = {
                     $in: jobIds
                 };
             }
-            if (jobTypes.length !== 0) {
+            if (jobTypes && jobTypes.length !== 0) {
 
                 searchOptions.type = {
                     $in: jobTypes
