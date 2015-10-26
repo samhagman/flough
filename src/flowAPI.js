@@ -15,12 +15,22 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
     let o = FloughInstance.o;
     let Logger = o.logger.func;
 
+    FloughInstance._dynamicPropFuncs = {};
+
+
     /**
      * Registers a function so that it can be called by .startFlow()
      * @param {String} flowName - Name of flow (successive calls of same flowName overwrite previous Flows)
      * @param {Function} flowFunc - User passed function that is the Flow's logic
+     * @param {Function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     *  that will be merged into the job.data of all jobs of this type.
      */
-    function registerFlow(flowName, flowFunc) {
+    function registerFlow(flowName, flowFunc, dynamicPropFunc = () => {
+        return {};
+    }) {
+
+        // Add the function to the dynamic properties functions list.
+        FloughInstance._dynamicPropFuncs[ flowName ] = dynamicPropFunc;
 
         /**
          * Starts a new FlowController Instance and then wraps User's flow function in promise and injects parameters
@@ -73,6 +83,21 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
     }
 
+
+    /**
+     * Create the kue job but first add any dynamic properties.
+     * @param flowName
+     * @param data
+     * @returns {bluebird|exports|module.exports}
+     */
+    function createFlowJob(flowName, data) {
+
+        let dynamicProperties = FloughInstance._dynamicPropFuncs[ flowName ](data);
+        let mergedProperties = _.merge(data, dynamicProperties);
+
+        return Promise.resolve(queue.create(`flow:${flowName}`, mergedProperties));
+    }
+
     /**
      * Starts a Flow by attaching extra fields to the User passed data and running Kue's queue.create()
      * @param {String} flowName - Name of Flow to start
@@ -106,9 +131,8 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
             data._helper = helper;
 
-            resolve(queue.create(`flow:${flowName}`, data));
+            resolve(createFlowJob(flowName, data));
         });
-
 
     }
 
