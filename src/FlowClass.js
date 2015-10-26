@@ -44,6 +44,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             // This is a logger that will log messages both to the job itself (job.log) but also to persistent storage
             this.jobLogger = require('./jobLogger')(mongoCon, Logger);
 
+            this.midSteps = {};
+
             /**
              * This will hold a counter of how many substeps have been added for a given step, which allows us to
              * dynamically assign substeps to jobs as they are called in the flow chain.
@@ -446,7 +448,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
         /*
          * the exec function
+         * Finished
          * - Should be able to define an arbitrary function to be run that isn't tracked as a job.
+         *
+         * TODO
          * - The function will be passed (resolve, reject) to finish itself
          * - The function's running should be logged to the Flow job
          * - The data it returns (eg. resolve(data) ) should be saved to Mongo under related jobs or something
@@ -455,39 +460,24 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         /**
          * Execute a function as a step.
          * @param step
-         * @param execName
-         * @param execData
-         * @param promFunc
+         * @param promReturningFunc
          * @returns {Flow}
          */
 
-        //execF(step, execName, promFunc) {
-        //    let _this = this;
-        //    Promise.all(_this.promised[ '0' ])
-        //        .then((promised) => {
-        //            let substep;
-        //
-        //            /* Determine Step/Substep */
-        //
-        //            // If we already have substeps at this step, increase substeps by 1 and set substep to the result
-        //            if (_this.substeps[ step ]) {
-        //                _this.substeps[ step ] += 1;
-        //                substep = _this.substeps[ step ];
-        //            }
-        //
-        //            // If no substeps at this step, set them to 1 and set substep to 1
-        //            else {
-        //                _this.substeps[ step ] = 1;
-        //                substep = 1;
-        //            }
-        //
-        //            /* Push job handler for this function into the job handler's array to be eventually handled by
-        // .end(). */  // I never want to type job handler again... _this.jobHandlers.push(() => {  // .handleJob()
-        // will eventually determine when and if to run this job based on step, substep, // and previous completion
-        // return _this.handleJob(step, substep, () => { return new Promise((jobResolve, jobReject) => {
-        // Logger.debug(`Running execF function ${execName}`); Logger.debug(`Execf function is`, promFunc);  try {
-        // promFunc((returned) => jobResolve([ null, returned ]), jobReject)/*.bind(_this)*/; } catch (err) {
-        // jobReject(err); } }); }); }); }) ;  return _this; }
+        execF(step, promReturningFunc) {
+            let _this = this;
+
+            const stepStr = step.toString();
+
+            if (_this.promised[ stepStr ]) {
+                _this.promised[ stepStr ].push(promReturningFunc.bind(null, _this.relatedJobs));
+            }
+            else {
+                _this.promised[ stepStr ] = [ promReturningFunc.bind(null, _this.relatedJobs) ];
+            }
+
+            return _this;
+        }
 
         /**
          * Handles storing promise returning functions for a job at correct step in Flow instance
@@ -533,13 +523,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                 // Complete the job...
                                 .spread((job, result) => {
-
-                                    if (false && job === null) {
-                                        return Promise.resolve(null);
-                                    }
-                                    else {
-                                        return _this.completeJob(job, result);
-                                    }
+                                    return _this.completeJob(job, result);
                                 })
 
                                 // Resolve.
@@ -755,7 +739,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     promiseList.forEach(promise => promise.cancel());
                                     resolve(_this);
                                 }
-                                else if (!_this.isCancelled) {
+                                else {
                                     // 4.
                                     // Waits for all the promises that represent jobs to complete
                                     Promise.all(promiseList)
