@@ -14,6 +14,7 @@ function getSearch(redisClient) {
     if (search) {
         return search;
     }
+
     reds.client = redisClient;
 
     // This is the key that Kue uses internally to store search indexes.
@@ -87,6 +88,7 @@ function setupKueSearcher(queue, redisClient, {logger}, storageClient) {
                                         Logger.error(`[ERROR SEARCHING KUE] ${job}`);
                                         reject(err);
                                     }
+
                                     resolve(job);
                                 });
                             }));
@@ -112,55 +114,82 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
     const Logger = logger.func;
     const jobModel = storageClient.model('job');
 
-    function searchJobs(searchParameters) {
+    /**
+     * Search for jobs using MongoDB as the source of truth.
+     * Results must match ALL specified parameters: jobIds, jobUUIDs, jobTypes
+     * @param {Array} [jobIds] - Array of Kue job ids to match
+     * @param {Array} [jobUUIDs] - Array of Flough job UUIDs to match
+     * @param {Array} [jobTypes] - Array of job types to match
+     * @param {Boolean} [completed] - Whether or not to only return completed jobs
+     * @param {Boolean} [_activeJobs] - Whether or not to return only active jobs
+     * @returns {bluebird|exports|module.exports}
+     */
+    function searchJobs({jobIds, jobUUIDs, jobTypes, completed = false, _activeJobs = true}) {
 
         return new Promise((resolve, reject) => {
-
-            let {jobIds, jobUUIDs, jobTypes, completed} = searchParameters;
 
             if (jobUUIDs && !_.isArray(jobUUIDs)) {
                 reject('jobUUIDs must be an array');
             }
+
             if (jobIds && !_.isArray(jobIds)) {
                 reject('jobIds must be an array');
             }
+
             if (jobTypes && !_.isArray(jobTypes)) {
                 reject('jobTypes must be an array');
             }
 
-            let searchOptions = {};
+            // MongoDB Search Object
+            let searchOptions = { completed };
 
             if (jobUUIDs && jobUUIDs.length !== 0) {
-
-                searchOptions['data._uuid'] = {
-                    $in: jobUUIDs
-                };
+                searchOptions[ 'data._uuid' ] = { $in: jobUUIDs };
             }
+
             if (jobIds && jobIds.length !== 0) {
-
-                searchOptions.jobId = {
-                    $in: jobIds
-                };
+                searchOptions.jobId = { $in: jobIds };
             }
+
             if (jobTypes && jobTypes.length !== 0) {
-
-                searchOptions.type = {
-                    $in: jobTypes
-                };
-            }
-            if (_.has(searchParameters, 'completed')) {
-                searchOptions.completed = completed;
+                searchOptions.type = { $in: jobTypes };
             }
 
             jobModel.find(searchOptions, (err, jobs) => {
-                    if (err) {
-                        Logger.error(err);
-                        reject(err);
+                if (err) {
+                    Logger.error(err);
+                    reject(err);
+                }
+                else {
+
+                    // If they only want to return active jobs (those found in Kue) then filter out inactive jobs
+                    if (_activeJobs) {
+
+                        // Build promise array whose items resolve whether or not the job at the corresponding index in
+                        // the jobs returned from MongoDB array (jobs) is found inside Kue or not.
+                        const promArray = jobs.map((job, index) => new Promise((resolve, reject) => {
+                            kue.Job.get(job.jobId, function(err, job) {
+                                if (err) {
+                                    // Not found in Kue, return false
+                                    resolve(false);
+                                }
+                                else {
+                                    // Found in Kue, return true if the UUIDs are the same (Job ids are recycled in Kue)
+                                    resolve(job.data._uuid === jobs[ index ].data._uuid);
+                                }
+                            });
+                        }));
+
+                        // After we've checked active state of all jobs returned from MongoDB, filter out jobs that were
+                        // not found in Kue and resolve the resulting array
+                        Promise.all(promArray)
+                            .then(isActiveJobArray => {
+                                resolve(jobs.filter((job, index) => isActiveJobArray[ index ]));
+                            })
+                        ;
                     }
-                    else {
-                        resolve(jobs);
-                    }
-                })
+                }
+            })
             ;
         });
 
@@ -185,8 +214,8 @@ function setupFlowSearcher(queue, redisClient, options, storageClient) {
 export default function setupSearchers(queue, redisClient, options, storageClient) {
 
     return {
-        searchKue: setupKueSearcher(queue, redisClient, options, storageClient),
-        searchJobs: setupJobSearcher(queue, redisClient, options, storageClient),
+        searchKue:   setupKueSearcher(queue, redisClient, options, storageClient),
+        searchJobs:  setupJobSearcher(queue, redisClient, options, storageClient),
         searchFlows: setupFlowSearcher(queue, redisClient, options, storageClient)
     };
 }
