@@ -96,7 +96,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
             let _this = this;
 
-            Logger.debug(`[${_this.flowId}][${_this.jobType}] Starting init flow`);
+            Logger.info(`[${_this.flowId}][${_this.jobType}] Starting init flow`);
 
             // Attach User passed promises to resolve before any flow.job()s run.
             _this.promised[ '0' ].concat(promiseArray);
@@ -144,7 +144,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                         })
                                         .then((flowDoc, err) => {
                                             if (err) {
-                                                Logger.error(err, '1');
+                                                Logger.error(err);
                                                 reject(err);
                                             }
                                             else {
@@ -178,10 +178,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         reject(new Error(`[${_this.flowId}] flowId passed to Flow.start() is not a valid ObjectId.`));
                     }
 
-                } catch (e) {
-                    Logger.error(e, '3');
+                } catch (err) {
+                    Logger.error(err);
 
-                    reject(e);
+                    reject(err);
                 }
             }));
 
@@ -228,6 +228,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             return new Promise((jobResolve, jobReject) => {
                                 try {
                                     let relatedJobs = _this.relatedJobs;
+
                                     //Logger.debug('relatedJobs in job: ', JSONIFY(relatedJobs));
                                     let jobUUID = _.get(relatedJobs, `${step}.${substep}.data._uuid`, null);
 
@@ -283,9 +284,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                                 ;
                                             });
 
-                                            // TODO do error handling on the .save((err)=>{}) method
                                             // Actually start this job inside Kue.
-                                            job.save();
+                                            job.save(err => Logger.error(err));
                                         })
                                     ;
                                 }
@@ -427,9 +427,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                                 ;
                                             });
 
-                                            // TODO do error handling on the .save((err)=>{}) method
                                             // Actually start this job inside Kue.
-                                            flowJob.save();
+                                            flowJob.save(err => Logger.error(err));
                                         })
                                     ;
                                 }
@@ -467,13 +466,24 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         execF(step, promReturningFunc) {
             let _this = this;
 
-            const stepStr = step.toString();
+            if (_this.stepsTaken < step) {
 
-            if (_this.promised[ stepStr ]) {
-                _this.promised[ stepStr ].push(promReturningFunc.bind(null, _this.relatedJobs));
-            }
-            else {
-                _this.promised[ stepStr ] = [ promReturningFunc.bind(null, _this.relatedJobs) ];
+                const promFunc = function() {
+
+                    let relatedJobs = _this.relatedJobs;
+
+                    return promReturningFunc(relatedJobs);
+                };
+
+                const stepStr = step.toString();
+
+                if (_this.promised[ stepStr ]) {
+                    _this.promised[ stepStr ].push(promFunc);
+                }
+                else {
+                    _this.promised[ stepStr ] = [ promFunc ];
+                }
+
             }
 
             return _this;
@@ -573,6 +583,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                 //Logger.error(_this);
 
                 _this.activeJobs.push[ job ];
+
                 //Logger.error(')()()()(AFTER RElating job here is activeJobs', _this.activeJobs);
 
 
@@ -681,12 +692,49 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                 });
             }
 
+            /**
+             * This will set the steps taken for this flow to 0, meaning it has completed initialization (step 0)
+             * @returns {bluebird|exports|module.exports}
+             */
+            function setStepsTakenToOne() {
+
+                return new Promise((resolve, reject) => {
+                    _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
+                        if (err) {
+                            reject(err);
+                        }
+                        else if (flowDoc) {
+
+                            if (flowDoc.stepsTaken === -1) {
+                                flowDoc.stepsTaken = 0;
+                                _this.stepsTaken = 0;
+                            }
+
+                            flowDoc.save((err) => {
+                                if (err) {
+                                    reject(err);
+                                }
+                                else {
+                                    resolve();
+                                }
+                            });
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
+                });
+            }
+
             return new Promise((resolve, reject) => {
                 // 0.
                 Promise.all(_this.promised[ '0' ])
 
                     // 1.
                     .then(cleanupRelatedJobs)
+
+                    // Set stepsTaken to 0 if they were -1 (initilization is complete)
+                    .then(setStepsTakenToOne)
                     .then(() => {
                         // 2.
                         let jobHandlerPromises = _this.jobHandlers.map((promiseReturner) => promiseReturner());
@@ -697,7 +745,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         // 3.
                         Promise.all(jobHandlerPromises)
                             .then(() => {
-                                Logger.info(`[${_this.flowId}] STARTING JOBS!`);
+                                Logger.debug(`[${_this.flowId}] STARTING JOBS!`);
 
                                 // Start running steps...
                                 unpackPromises(1, resolve, reject);
@@ -750,12 +798,12 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             Logger.debug(`[${_this.flowId}] ~~~~~FINISHED STEP: ${step}`);
 
                                             // Finish up this step...
-                                            return _this.completeStep()
-                                                .then(() => {
-                                                    // Start this process again for the next step
-                                                    unpackPromises(step += 1, resolve, reject);
-                                                });
+                                            return _this.completeStep(step)
 
+                                        })
+                                        .then(() => {
+                                            // Start this process again for the next step
+                                            unpackPromises(step += 1, resolve, reject);
                                         })
                                         .catch((err) => {
                                             Logger.error('Error unpacking promises:');
@@ -763,6 +811,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                             //throw new Error(err);
                                         })
+                                        .done()
                                     ;
                                 }
                             }
@@ -834,8 +883,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     return activeJob.id === job.id;
                                 });
 
-                                Logger.debug('()()()()()(Removing active job it is done.', _this.activeJobs);
-
                                 // Update the substeps taken on this flow instance
                                 _this.substepsTaken = flowDoc.substepsTaken;
 
@@ -866,14 +913,14 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * also resets the substepsTaken to [] on both the Mongo doc and the flow instance as well.
          * @returns {bluebird|exports|module.exports}
          */
-        completeStep() {
+        completeStep(step) {
             let _this = this;
 
             return new Promise((resolve, reject) => {
 
                 // Update the mongo doc's stepsTaken and substepsTaken
                 _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                    stepsTaken:    _this.stepsTaken + 1,
+                    stepsTaken:    step,
                     substepsTaken: []
                 }, { new: true })
                     .then((flowDoc, err) => {
@@ -882,9 +929,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             reject(err);
                         }
                         else {
-
                             // Update the flow instance
-                            _this.stepsTaken = flowDoc.stepsTaken;
+                            _this.stepsTaken = step;
                             _this.substepsTaken = [];
                             resolve();
                         }
@@ -909,6 +955,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                 const cancelFlowJob = () => {
                     _this.kueJob.log('Flow was cancelled.');
+                    _this.jobLogger('Flow was cancelled', _this.flowId, _this.kueJob.id);
                     _this.kueJob.failed();
                 };
 
@@ -921,7 +968,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         FloughInstance.emit(`CancelJob:${job.data._uuid}`, cancellationData);
                     }
                     else {
-                        Logger.error('ACTIVE JOB HAD NO FLOWID, DON"T KNOW HOWT TO CANCEL IT');
+                        Logger.error('ACTIVE JOB HAD NO FLOWID, DON"T KNOW HOW TO CANCEL IT');
                     }
                 });
 
