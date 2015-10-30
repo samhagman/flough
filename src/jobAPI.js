@@ -57,7 +57,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          */
         const jobWrapper = function(job) {
             Logger.info(`Starting: ${jobType}`);
-            Logger.debug(`Job's data:`, job.data);
+            //Logger.debug(`Job's data:`, job.data);
 
             return new Promise((resolve, reject) => {
 

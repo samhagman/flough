@@ -198,11 +198,24 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
     return searchJobs;
 }
 
-function setupFlowSearcher(queue, redisClient, options, storageClient) {
+function setupFlowSearcher(queue, redisClient, {logger}, storageClient) {
 
-    function searchFlows() {
+    const Logger = logger.func;
+    const flowModel = storageClient.model('flow');
+
+
+    function searchFlows(flowUUID) {
         return new Promise((resolve, reject) => {
-            resolve();
+
+            flowModel.findById(flowUUID, (err, flow) => {
+                if (err) {
+                    Logger.error(err);
+                    reject(err);
+                }
+                else {
+                    resolve(flow);
+                }
+            })
         });
     }
 
