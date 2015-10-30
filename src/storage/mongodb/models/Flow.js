@@ -16,7 +16,7 @@ export default function FlowSchemaBuilder(mongoose) {
     }, { _id: false });
 
     const FlowSchema = new Schema({
-            stepsTaken:    { type: Number, required: false },
+            stepsTaken:    { type: Number, required: true, default: -1 },
             substepsTaken: { type: Array, required: false, default: [] },
             totalSteps:    { type: Number, required: false },
             jobType:       { type: String, required: false },
@@ -26,6 +26,7 @@ export default function FlowSchemaBuilder(mongoose) {
             relatedJobs:   { type: Schema.Types.Mixed, required: true },
             jobLogs:       [ JobLogSchema ],
             flowLogs:      [ FlowLogSchema ],
+            isCancelled:   { type: Boolean, required: true, default: false },
             completed:     { type: Boolean, required: true, default: false }
         },
         { collection: 'flow' });
