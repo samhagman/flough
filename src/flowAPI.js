@@ -110,7 +110,7 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
         return new Promise((resolve, reject) => {
 
             if (!data._stepsTaken) {
-                data._stepsTaken = 0;
+                data._stepsTaken = -1;
             }
 
             if (!data._substepsTaken) {
