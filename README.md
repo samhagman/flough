@@ -11,9 +11,17 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 - [Basic Initialization](https://github.com/samhagman/flough#basic-initialization)
 - [Jobs](https://github.com/samhagman/flough#jobs)
 - [Flows](https://github.com/samhagman/flough#flows)
+- [execF](https://github.com/samhagman/flough#execF)
+
+### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
+- [Substeps](https://github.com/samhagman/flough#substeps)
+- [Flow/Job Cancellation](https://github.com/samhagman/flough#flowjob-cancellation)
+- [Flow/Job Restarts](https://github.com/samhagman/flough#flowjob-restarts)
+- [Flough Events](https://github.com/samhagman/flough#flough-events)
+- [Flough Searching](https://github.com/samhagman/flough#flough-searching)
 
 ### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
-Options
+[Initialization Options](https://github.com/samhagman/flough#flough-initialization-options)
 - [searchKue](https://github.com/samhagman/flough#searchkue)
 - [devMode](https://github.com/samhagman/flough#devmode)
 - [cleanKueOnStartup](https://github.com/samhagman/flough#cleankueonstartup)
@@ -22,11 +30,7 @@ Options
 - [redis](https://github.com/samhagman/flough#redis)
 - [storage](https://github.com/samhagman/flough#storage)
 
-### [Additional Features](https://github.com/samhagman/flough#additional-features-1)
-- [Substeps](https://github.com/samhagman/flough#substeps)
-- [Flow/Job Restarts](https://github.com/samhagman/flough#flowjob-restarts)
-- [Flough Events](https://github.com/samhagman/flough#flough-events)
-- [Flough Searching](https://github.com/samhagman/flough#flough-searching)
+
 
 ### ~~[Tests](https://github.com/samhagman/flough#tests-1)~~
 - TODO
@@ -76,9 +80,11 @@ A job is started like so:
 // Assuming Flough has been initialized
 Flough.startJob('get_website_html', { url: 'samhagman.com' }).then(function(job) { job.save(); }));
 ```
-Yeah I know the usage here is a little wonky but it is what it is for now.  `job` here is a *non-modified* Kue job.
+Yeah I know the usage here is a little wonky but it is what it is for now.  
 
-This would start a job with a type of `get_website_html` which had been _previously_ registered like so:
+`job` here is a *slightly modified* Kue job object.
+
+The above code would start a job with a type of `get_website_html` which had been _previously_ registered like so:
 
 ```node
 // Assuming Flough has been initialized
@@ -93,7 +99,7 @@ Flough.registerJob('get_website_html', function(job, done, error) {
         }
         else {
             console.log({ result: html });
-            done(html);
+            done({html: html});
         }
     });
 });
@@ -104,10 +110,10 @@ When registering a job you get three parameters injected into your function: `jo
 
 `job` is a slightly modified [Kue](https://github.com/Automattic/kue) job and still retains all functions available to that object; look at the [Kue](https://github.com/Automattic/kue) documentation for more about job events, job progress, job priorities, etc.
 
-The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the `job.jobLogger(job.data._uuid, 'My job log message')` function which is an upgraded version `job.log('My message')` that will save messages to both Redis and MongoDB.  More information can be found in [Structure.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
+The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the `job.jobLogger()` function.
 
 `done` is a function that is called to let Flough know that your job has completed.  Any JSON-_able_ object passed to this function will
-be inserted into the `job.data._results` object and the previous job's result will be easily reachable at `job.data._lastResult`.
+be inserted into the `job.data._relatedJobs` object and the previous step's result(s) will be easily reachable at `job.data._lastStepResult`.
   
 `error` is a function that lets Flough know that your job has failed. Currently passing an error instance or a string to `error` does nothing but will eventually be passed to the next job as well and/or trigger another cleanup job to run.
 
@@ -124,8 +130,8 @@ Before showing off a flow lets register another job so we can chain them togethe
 Flough.registerJob('tweet_something', function(job, done, error) {
     
     Twitter.tweet({
-        message: job.data._lastResult.result, // Equals the previous jobs returned html
-        handle: job.data.handle               // Equals '@hagmansam'
+        message: job.data._lastStepResult.html, // Equals the previous jobs returned html
+        handle: job.data.handle                 // Equals '@hagmansam'
     }, function(err) {
         
         if (err) {
@@ -173,104 +179,54 @@ Several things to note about this flow:
 
 - You can pass options to a flow as the second parameter to `.startFlow()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
 
-- The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s and `.flow()`s have been called on the flow.
+- The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s,  `.flow()`s, and `.execF()`s have been called on the flow.
 
 - `flow.job()` is the same as `.startJob()` except it takes a number as its first parameter which is its *step* number.  More on this later.
 
-- `flow.flow()` is the same as `.startFlow()` except it takes a number as its first parameter which is its *step* number.  This entire flow (all steps, [substeps](https://github.com/samhagman/flough#substeps), `.job()`s and `.flow()`s) will have to be completed before it is considered finished
+- `flow.flow()` is the same as `.startFlow()` except it takes a number as its first parameter which is its *step* number.  This entire flow (all steps, [substeps](https://github.com/samhagman/flough#substeps), `.job()`s, `.flow()`s and `.execF()`s) will have to be completed before it is considered finished.
 
-- `.end()` returns a promise which will resolve when all the jobs have completed and injects the flow instance itself into the function.
+- `.end()` returns a promise which will resolve when all the jobs have completed and injects the flow instance into the callback it takes as its only argument.
 
 - Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
 
+### execF()
 
-
-## Initializing a Flough Instance
-
-Here is an example of a full options object with **the defaults shown**:
+The `execF(Function([relatedJobs]))` function does what it says, it executes an arbitrary function.  Sometimes you don't want to go through all the trouble of registering a job or flow for something simple you want to do between two steps.  This allows you to do that.  **The function must return a Promise.** I recommend [Bluebird](http://bluebirdjs.com/docs/getting-started.html).
+ 
+ Here is an example of `execF()` using our previous flow example:
 
 ```node
-var options = {
-    searchKue: false,
-    devMode: true,
-    cleanKueOnStartup: true,
-    returnJobOnEvents: true,
+// Assuming Flough has been initialized
+Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
-    logger: {
-        func: console.log,
-        advanced: false
-    },
-    
-    redis: {
-        type: 'default',
-        host: '127.0.0.1',
-        port: 6379
-    },
-    
-    storage: {
-        type: 'mongo',
-        uri: 'mongodb://127.0.0.1:27017/flough', // Default_MongoDB_URL/flough
-        options: {
-            db:     { native_parser: true },
-            server: { poolSize: 5 },
-            user:   'baseUser', // Whatever the user you made
-            pass:   'basePwd'
-        }
-    }
-}
+    flow.start()
+        .job(1, 'get_website_html', { url: flow.data.url })
+        .job(2, 'tweet_something', { handle: '@hagmansam' })
+        .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
+        .execF(2, function(relatedJobs) {
+            return new Promise((resolve, reject) => {
+            
+                // If step 1, substep 1's result has an html field equal to '<h1> My Site </h1>' do nothing
+                if (relatedJobs.1.1.html === '<h1> My Site </h1>') {
+                    resolve();
+                }
+                else { // Otherwise cancel the flow
+                    flowInstance.cancel();  // Asynchronous function
+                    resolve();
+                }
+            });
+        })
+        .end()
+        .then(function(flow) {
+            done();
+        })
+        .catch(function(err) {
+            error(err);
+        });
+
+});
 ```
-
-### searchKue
-
-`searchKue` is off by default. Turning on this option will allow you to search for jobs and flows that are in the Kue queue.  It is off by default because it can cause some problems if you have a high number of jobs and don't manually clean Redis often.  [Read more about the downsides here](https://github.com/Automattic/kue/issues/412)
-
-### devMode
-
-`devMode` is on by default.  `devMode` being on has two side effects:
-1. Flough will generate logs using the [logger](https://github.com/samhagman/flough/#logger).
-2. Errors thrown by user registered jobs/flows will not be caught, which will cause the process to crash and allow you to debug your jobs/flows much easier.
-
-The flipside is that if `devMode` is turned off Flough will generate only generate error logs and errors will be caught and logged, but the process will not crash.
-
-### cleanKueOnStartup
-
-`cleanKueOnStartup` is on by default.  This option is highly recommended to keep on.  On server startup this option does two things:
-1. Solo jobs (jobs not started by a flow) and flow jobs (jobs that represent a flow) are restarted if they failed or did not complete before the server was shutdown previously.
-2. Helper jobs (jobs started by a flow) of any status are removed from the queue because they will be restarted by the flow when the flow is restarted.
-
-Unless you want to tweak which jobs are removed and which jobs are restarted after digging into the code a bit, then keep this option on.
-
-### returnJobOnEvents
-
-`returnJobOnEvents` is on by default.  When turned on, the custom events emitted by Flough (no the Kue events) will also attach the entire Job itself to the event.  You might want to turn this off if you don't need the entire job and if you are listening to these events on a large scale.
-
-### logger
-
-`logger` is optional and has two fields.  The first field is `func` which allows you to inject your own logger to be used by Flough.  This will allow you to handle log messages (single argument, always a string) in whatever way you want.  The second field is `advanced` which lets you tell Flough whether or not your logger function supports ALL four of these functions:
-- `logger.info()`
-- `logger.debug()`
-- `logger.warn()`
-- `logger.error()`
-
-which Flough will to help give more useful and intuitive log messages when developing.  Also `logger.error` is used even when `devMode` is turned off to log errors thrown by user registered jobs/flows.
-
-### redis
-
-`redis` allows you to control the redis connetion Flough will use and has two types. (The `'default'` type will be used if you don't choose a type and attempts to connect to Redis using its defaults)
-1. `redis.type = 'supplyClient'` is where you create your own Redis connection and pass it directly to Flough onto `options.redis.client`.
-
-2. `redis.type = 'supplyOptions'` is where you supply Flough with the connection options to connect to Redis.  The available options can be found [here](https://github.com/Automattic/kue#redis-connection-settings).
-
-### storage
-
-`storage` allows you to give Flough the persistent storage options you want to use for Flough.  Right now only MongoDB is supported.
-
-`storage` types:
-
-- 'options.storage.type = 'mongo'` looks exactly like what's shown in the [full options example](https://github.com/samhagman/flough#intializing-a-flough-instance).
-
-- `options.storage.type = 'mongoose'` allows you to hand a mongoose connection (via `mongoose.createConnection()`) directly to Flough on `options.storage.connection`.  **Also important to note is that you should attach your mongoose library instance (`var mongoose = require('mongoose');`) to `options.storage.mongoose` because there are problems with mongoose where requiring mongoose in a npm module causes problems when creating Schemas inside the npm module, which is the case with Flough.**
 
 ## Additional Features
 
@@ -292,6 +248,19 @@ In the above example both of the jobs with a step of 1 (`read_a_file` and `send_
 To emphasize, **steps run in series while substeps (`.job()` and/or `.flow()`s with same step number) run in parallel.**
 
 Even fairly complex processes should be able to be modelled with steps, substeps, jobs and flows.
+
+
+### Flow/Job Cancellation
+
+In the [execF()](https://github.com/samhagman/flough#execF) example we showed an example of cancelling a flow.  Calling `flow.cancel()` will cancel the entire flow, and calling `job.cancel()` will cancel that particular job and any flow that it belonged to.  Currently, you cannot cancel a single step/job in a flow and continue the flow.
+
+Cancelling a flow will do the following:
+
+- Mark the flow as cancelled in MongoDB by setting the `isCancelled` field to `true`.
+
+- Stop any further steps or substeps from running that haven't already started.
+
+- Cancel any currently running asynchronous jobs using [Bluebird's cancellation feature](http://bluebirdjs.com/docs/api/cancellation.html#cancellation).
 
 
 ### Flow/Job Restarts
@@ -317,9 +286,15 @@ These special events are emitted in the following format: `some_identifier:some_
 
 ### Flough Searching
 
-If when intializing `Flough` you pass the option `searchKue: true`, then a `Flough.search()` promise function will become available.  This function uses [reds](https://github.com/tj/reds) under the hood and exposes just the `.query()` method of that library.
+If when initializing `Flough` you pass the option `searchKue: true`, then some search promise functions will become available.
+  
+There are 3 search functions:
 
-To use `Flough.search()` you do something like this:
+- `Flough.searchKue()`
+
+This function uses [reds](https://github.com/tj/reds) under the hood and exposes just the `.query()` method of that library.
+
+To use `Flough.searchKue()` you do something like this:
 
 ```node
 
@@ -329,16 +304,34 @@ Flough.search('term1 term2 term3')
                 console.log(jobsArray) // Prints an array of job objects
         })
         .catch(function(err) {
-                console.log(err) // Prints an error from .search()
+                console.log(err) // Prints an error from .searchKue()
         });
 
 ```
 
-What `.search()` does is takes a string with space-separated search terms inside and looks for jobs that contain **ALL** of the search terms.  Note that the terms don't all need to appear in the same field, just at least once somewhere in the job.
+What `.searchKue()` does is takes a string with space-separated search terms inside and looks for jobs that contain **ALL** of the search terms.  Note that the terms don't all need to appear in the same field, just at least once somewhere in the job.
 
 To perform a search where you want all jobs that **contain at least one of the search terms** you can pass `true` as the second argument like so:
 `Flough.search(string, true)`
 This will use the `.type('or')` functionality of [reds](https://github.com/tj/reds).
+
+- `Flough.searchJobs({ [jobIds], [jobUUIDs], [jobTypes], [completed = false], [_activeJobs = true]})`
+
+This function will search the MongoDB collection directly.  It takes an object with several different possible fields that all search in an additive way (eg. jobIds && jobTypes).
+
+Additionally there are the `completed` and `_activeJobs` fields which are set to default settings which return only completed jobs that are active in Kue.
+
+- `Flough.searchFlows(flowUUID)`
+
+This function will also search MongoDB and only accepts a single parameter which is the UUID of a flow.
+
+
+### Job Logger
+
+Signature: `job.jobLogger('My job log message', job.data._uuid, [job.id])`
+
+The job logger is similar to [Kue's](https://github.com/Automattic/kue) `job.log('My message')` but it instead will persist logs to both redis and MongoDB.  This logger is attached to both the `job` and `flow` objects.  The first parameter is your message, the second parameter is the UUID of the job and the third is an optional parameter that takes the exact `job.id` of the job.  This third parameter can be useful when a job can not be found in MongoDB yet at the time of you calling this function.
+
 
 ### Dynamic Default Properties for Jobs and ~~Flows~~
 
@@ -348,7 +341,7 @@ Since jobs and flows are built to be reusable there is probably some default inf
 
 This has two main benefits:
 
-- Allows you to attach dynamic data to the job **before** it is put into queue.  This means that this data will be indexed and therefore searchable by `Flough.search()` and that it will automatically get persisted to MongoDB without you having to manually put it there inside the job you register.
+- Allows you to attach dynamic data to the job **before** it is put into queue.  This means that this data will be indexed and therefore searchable by `Flough.searchKue()` and that it will automatically get persisted to MongoDB without you having to manually put it there inside the job you register.
 
 Also because you have access to the `job.data` **before** it is put into the queue, you have access to `job.data._uuid` which is the unique identification string that has been assigned to the job.  This allows you to use that UUID for whatever purposes you want for properties that you want to attach to `job.data`.
 
@@ -400,6 +393,141 @@ Some things to note:
 
 - The dynamic property function must return a JSONable object.
 
+
+
+## Initializing a Flough Instance
+
+Here is an example of fully setting up a Flough instance:
+
+```node
+// Require flough and get FloughBuilder
+var FloughBuilder = require('flough')();
+
+// Initialize express, redis, mongo, and mongoose
+var app = require('express')();
+var redisClient = require('redis').createClient();
+var mongoose = require('mongoose');
+var mongoConn = mongoose.createConnection(CONFIG.MONGO.URI, CONFIG.MONGO.OPTIONS);
+
+// Create flough initialization options
+var floughOptions = {
+    redis:      {
+        type:   'supplyClient',
+        client: redisClient
+    },
+    storage:    {
+        type:       'mongoose',
+        connection: mongoConn,
+        mongoose:   mongoose
+    },
+    expressApp: app,
+    logger:     {
+        func:     Logger,
+        advanced: true
+    },
+    devMode:    true,
+    searchKue:  true
+};
+    
+// Initialize Flough
+FloughBuilder.init(floughOptions)
+    .then(Flough => {
+    
+        // Flough.registerJob(...)
+        // Flough.registerFlow(...)
+        // Flough.searchJobs(...)
+        // Flough.searchFlows(...)
+        // etc...
+        
+    });
+```
+
+Here is an example of a full `floughOptions` object with **the defaults shown**:
+
+```node
+var floughOptions = {
+    searchKue: false,
+    devMode: true,
+    cleanKueOnStartup: true,
+    returnJobOnEvents: true,
+
+    logger: {
+        func: console.log,
+        advanced: false
+    },
+    
+    redis: {
+        type: 'default',
+        host: '127.0.0.1',
+        port: 6379
+    },
+    
+    storage: {
+        type: 'mongo',
+        uri: 'mongodb://127.0.0.1:27017/flough', // Default_MongoDB_URL/flough
+        options: {
+            db:     { native_parser: true },
+            server: { poolSize: 5 },
+            user:   'baseUser', // Whatever the user you made
+            pass:   'basePwd'
+        }
+    }
+}
+```
+
+## Flough Initialization Options
+
+### searchKue
+
+`searchKue` is off by default. Turning on this option will allow you to search for jobs and flows that are in the Kue queue.  It is off by default because it can cause some problems if you have a high number of jobs and don't manually clean Redis often.  [Read more about the downsides here](https://github.com/Automattic/kue/issues/412).
+
+### devMode
+
+`devMode` is on by default.  `devMode` being on has two side effects:
+
+1. Flough will generate logs using the [logger](https://github.com/samhagman/flough/#logger).
+2. Errors thrown by user registered jobs/flows will not be caught, which will cause the process to crash and allow you to debug your jobs/flows much easier.
+
+The flip-side is that if `devMode` is turned off Flough will generate only generate error logs and errors will be caught and logged, but the process will not crash.
+
+### cleanKueOnStartup
+
+`cleanKueOnStartup` is on by default.  This option is highly recommended to keep on.  On server startup this option does two things:
+1. Solo jobs (jobs not started by a flow) and flow jobs (jobs that represent a flow) are restarted if they failed or did not complete before the server was shutdown previously.
+2. Helper jobs (jobs started by a flow) of any status are removed from the queue because they will be restarted by the flow when the flow is restarted.
+
+Unless you want to tweak which jobs are removed and which jobs are restarted after digging into the code a bit, then keep this option on.
+
+### returnJobOnEvents
+
+`returnJobOnEvents` is on by default.  When turned on, the custom events emitted by Flough (no the Kue events) will also attach the entire Job itself to the event.  You might want to turn this off if you don't need the entire job and if you are listening to these events on a large scale.
+
+### logger
+
+`logger` is optional and has two fields.  The first field is `func` which allows you to inject your own logger to be used by Flough.  This will allow you to handle log messages (single argument, always a string) in whatever way you want.  The second field is `advanced` which lets you tell Flough whether or not your logger function supports ALL four of these functions:
+- `logger.info()`
+- `logger.debug()`
+- `logger.warn()`
+- `logger.error()`
+
+which Flough will to help give more useful and intuitive log messages when developing.  Also `logger.error` is used even when `devMode` is turned off to log errors thrown by user registered jobs/flows.
+
+### redis
+
+`redis` allows you to control the redis connetion Flough will use and has two types. (The `'default'` type will be used if you don't choose a type and attempts to connect to Redis using its defaults)
+1. `redis.type = 'supplyClient'` is where you create your own Redis connection and pass it directly to Flough onto `options.redis.client`.
+
+2. `redis.type = 'supplyOptions'` is where you supply Flough with the connection options to connect to Redis.  The available options can be found [here](https://github.com/Automattic/kue#redis-connection-settings).
+
+### storage
+
+`storage` allows you to give Flough the persistent storage options you want to use for Flough.  Right now only MongoDB is supported.
+
+`storage` types:
+
+- 'options.storage.type = 'mongo'` looks exactly like what's shown in the [full options example](https://github.com/samhagman/flough#intializing-a-flough-instance).
+
+- `options.storage.type = 'mongoose'` allows you to hand a mongoose connection (via `mongoose.createConnection()`) directly to Flough on `options.storage.connection`.  **Also important to note is that you should attach your mongoose library instance (`var mongoose = require('mongoose');`) to `options.storage.mongoose` because there are problems with mongoose where requiring mongoose in a npm module causes problems when creating Schemas inside the npm module, which is the case with Flough.**
 
 # Tests
 
