@@ -181,8 +181,8 @@ function setupStorage(FloughAPI) {
  * Builds a logger function for use within Flough.
  * This logger will be used mostly for development purposes so that Jobs and Flows can be tracked throughout their
  * lifetime.
- * @param {Boolean} devMode - If devMode is off, disable Logger.
- * @param {Function} [passedLogger] - A function to be used for logging inside of Flough
+ * @param {boolean} devMode - If devMode is off, disable Logger.
+ * @param {function} [passedLogger] - A function to be used for logging inside of Flough
  * @param {boolean} [advanced] - A logger is advanced if it supports separate functions for .warn(), .info(), .error(),
  *     and .debug()
  * @returns {{warn, info, error, debug}}
@@ -249,11 +249,11 @@ function loggerBuilder(devMode, passedLogger, advanced) {
 /**
  * Make the Flough Instance listen on Kue queue events and then emit both copies of those events and other custom
  * events.
- * @param {Object} queue - Kue queue
- * @param {Object} FloughInstance - An instance of the FloughAPI Class
- * @param {Boolean} returnJobOnEvents - Should Flough emit additional events (beyond Kue copies) that have full job
+ * @param {object} queue - Kue queue
+ * @param {object} FloughInstance - An instance of the FloughAPI Class
+ * @param {boolean} returnJobOnEvents - Should Flough emit additional events (beyond Kue copies) that have full job
  *     attached?
- * @param {Object} logger - Flough Internal Logging Function
+ * @param {object} logger - Flough Internal Logging Function
  * @returns {*}
  */
 function attachEvents(queue, FloughInstance) {
@@ -338,9 +338,12 @@ function attachEvents(queue, FloughInstance) {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job remove', ...args);
                 kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data._uuid}:remove`, job);
-                    FloughInstance.emit(`${job.type}:remove`, job);
-                    FloughInstance.emit(`${job.data._flowId}:remove`, job);
+                    if (job) {
+
+                        FloughInstance.emit(`${job.data._uuid}:remove`, job);
+                        FloughInstance.emit(`${job.type}:remove`, job);
+                        FloughInstance.emit(`${job.data._flowId}:remove`, job);
+                    }
                 });
             })
         ;
@@ -388,12 +391,12 @@ function attachEvents(queue, FloughInstance) {
 
 /**
  * Setup the Kue queue.
- * @param {Object} logger - internal logging function
- * @param {Boolean} searchKue - Should the Kue queue be searchable? (Adds overhead to Kue queue)
- * @param {Boolean} cleanKueOnStartup - Should the Kue queue be cleaned on server restart?
- * @param {Boolean} jobEvents - Should the Kue queue create jobs that emit events, or only rely on the queue's events?
- * @param {Object} [redis] - If the user supplied Redis options, use them for setting up Kue queue
- * @param {Object} [expressApp] - If user passed in an express app, then use it to enable Kue's interface
+ * @param {object} logger - internal logging function
+ * @param {boolean} searchKue - Should the Kue queue be searchable? (Adds overhead to Kue queue)
+ * @param {boolean} cleanKueOnStartup - Should the Kue queue be cleaned on server restart?
+ * @param {boolean} jobEvents - Should the Kue queue create jobs that emit events, or only rely on the queue's events?
+ * @param {object} [redis] - If the user supplied Redis options, use them for setting up Kue queue
+ * @param {object} [expressApp] - If user passed in an express app, then use it to enable Kue's interface
  * @returns {bluebird|exports|module.exports}
  */
 function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expressApp}) {
