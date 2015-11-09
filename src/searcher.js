@@ -25,9 +25,9 @@ function getSearch(redisClient) {
 
 /**
  * Returns a search function for the Kue queue.
- * @param {Object} queue - Kue queue
- * @param {Object} redisClient
- * @param {Object} logger - Internal Flough logger
+ * @param {object} queue - Kue queue
+ * @param {object} redisClient
+ * @param {object} logger - Internal Flough logger
  * @returns {searchKue}
  */
 function setupKueSearcher(queue, redisClient, {logger}, storageClient) {
@@ -36,8 +36,8 @@ function setupKueSearcher(queue, redisClient, {logger}, storageClient) {
 
     /**
      * Takes space separated query string and performs full text search on the Kue queue with them.
-     * @param {String} query
-     * @param {Boolean} [union] - If true, call .type('or') on search query, this changes default of "and" for
+     * @param {string} query
+     * @param {boolean} [union] - If true, call .type('or') on search query, this changes default of "and" for
      * multiple items.
      * @returns {bluebird|exports|module.exports}
      */
@@ -120,8 +120,8 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
      * @param {Array} [jobIds] - Array of Kue job ids to match
      * @param {Array} [jobUUIDs] - Array of Flough job UUIDs to match
      * @param {Array} [jobTypes] - Array of job types to match
-     * @param {Boolean} [completed] - Whether or not to only return completed jobs
-     * @param {Boolean} [_activeJobs] - Whether or not to return only active jobs
+     * @param {boolean} [completed] - Whether or not to only return completed jobs
+     * @param {boolean} [_activeJobs] - Whether or not to return only active jobs
      * @returns {bluebird|exports|module.exports}
      */
     function searchJobs({jobIds, jobUUIDs, jobTypes, completed = false, _activeJobs = true}) {
@@ -161,7 +161,6 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
                     reject(err);
                 }
                 else {
-
                     // If they only want to return active jobs (those found in Kue) then filter out inactive jobs
                     if (_activeJobs) {
 
@@ -187,6 +186,9 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
                                 resolve(jobs.filter((job, index) => isActiveJobArray[ index ]));
                             })
                         ;
+                    }
+                    else {
+                        resolve(jobs);
                     }
                 }
             })
