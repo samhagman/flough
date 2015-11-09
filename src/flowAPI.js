@@ -5,9 +5,9 @@ let ObjectId = require('mongoose').Types.ObjectId;
 
 /**
  * Builds the Flow API
- * @param {Object} queue - Kue queue
- * @param {Object} mongoCon - Mongoose Connection
- * @param {Object} FloughInstance - Instance of FloughAPI that is passed to the user.
+ * @param {object} queue - Kue queue
+ * @param {object} mongoCon - Mongoose Connection
+ * @param {object} FloughInstance - Instance of FloughAPI that is passed to the user.
  * @returns {{registerFlow, startFlow}}
  */
 export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
@@ -20,9 +20,9 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Registers a function so that it can be called by .startFlow()
-     * @param {String} flowName - Name of flow (successive calls of same flowName overwrite previous Flows)
-     * @param {Function} flowFunc - User passed function that is the Flow's logic
-     * @param {Function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     * @param {string} flowName - Name of flow (successive calls of same flowName overwrite previous Flows)
+     * @param {function} flowFunc - User passed function that is the Flow's logic
+     * @param {function} dynamicPropFunc - This is function to be run at job start time which should return an object
      *  that will be merged into the job.data of all jobs of this type.
      */
     function registerFlow(flowName, flowFunc, dynamicPropFunc = () => {
@@ -35,7 +35,7 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
         /**
          * Starts a new FlowController Instance and then wraps User's flow function in promise and injects parameters
          * into it.
-         * @param {Object} job - A Kue job that is used to track and restart the Flow
+         * @param {object} job - A Kue job that is used to track and restart the Flow
          * @returns {bluebird|exports|module.exports}
          */
         const flowWrapper = function(job) {
@@ -100,9 +100,9 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Starts a Flow by attaching extra fields to the User passed data and running Kue's queue.create()
-     * @param {String} flowName - Name of Flow to start
-     * @param {Object} [data] - Data context to be attached to this Flow
-     * @param {Boolean} [helper] - If this is a helper flow, it will not restart on its own after a server restart.
+     * @param {string} flowName - Name of Flow to start
+     * @param {object} [data] - Data context to be attached to this Flow
+     * @param {boolean} [helper] - If this is a helper flow, it will not restart on its own after a server restart.
      * @returns {bluebird|exports|module.exports}
      */
     function startFlow(flowName, data = {}, helper = false) {

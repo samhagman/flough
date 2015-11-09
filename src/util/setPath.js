@@ -1,8 +1,8 @@
 /**
  * Duplicates functionality of _.set() but allows you to use dot notation with integer keys.
  * Ex. x.1.1.2
- * @param {Object} obj
- * @param {String} str
+ * @param {object} obj
+ * @param {string} str
  * @param {*} val
  */
 export default function setPath(obj, str, val) {

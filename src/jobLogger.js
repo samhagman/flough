@@ -2,8 +2,8 @@ const kue = require('kue');
 
 /**
  * Creates a jobLogger() which when called will log its message to both the Kue's job and Mongo's job
- * @param {Object} mongoCon - Mongoose connection
- * @param {Object} Logger - Internal Flough Logger
+ * @param {object} mongoCon - Mongoose connection
+ * @param {object} Logger - Internal Flough Logger
  * @returns {jobLogger}
  */
 export default function jobLogFactory(mongoCon, Logger) {
@@ -14,8 +14,8 @@ export default function jobLogFactory(mongoCon, Logger) {
 
     /**
      * Logs messages to both the redis job and optionally the persistent storage's job
-     * @param {String} msgString - The message to be logged
-     * @param {String} UUID - The job's UUID the message belongs to.
+     * @param {string} msgString - The message to be logged
+     * @param {string} UUID - The job's UUID the message belongs to.
      * @param {Number} [jobId] - Optionally pass a Kue jobId to force jobLogger to use.
      */
     function jobLogger(msgString, UUID, jobId) {

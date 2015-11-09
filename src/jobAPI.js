@@ -6,9 +6,9 @@ let ObjectId = require('mongoose').Types.ObjectId;
 
 /**
  * Builds the Jobs APIs
- * @param {Object} queue - Kue queue
- * @param {Object} mongoCon - Mongoose connection
- * @param {Object} FloughInstance - FloughAPI instance that is eventually passed to the user.
+ * @param {object} queue - Kue queue
+ * @param {object} mongoCon - Mongoose connection
+ * @param {object} FloughInstance - FloughAPI instance that is eventually passed to the user.
  * @returns {{registerJob, startJob}}
  */
 export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
@@ -23,9 +23,9 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Allows a User to register a job function for repeated use by .startJob()
-     * @param {String} jobType - The string that this job should be registered under
-     * @param {Function} jobFunc - The User passed function that holds the job's logic
-     * @param {Function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     * @param {string} jobType - The string that this job should be registered under
+     * @param {function} jobFunc - The User passed function that holds the job's logic
+     * @param {function} dynamicPropFunc - This is function to be run at job start time which should return an object
      *  that will be merged into the job.data of all jobs of this type.
      */
     function registerJob(jobType, jobFunc, dynamicPropFunc = () => {
@@ -37,8 +37,8 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
         /**
          * Take a job instance and cancel it.
-         * @param {Object} job - A Kue job object
-         * @param {Object} data - Data about cancellation
+         * @param {object} job - A Kue job object
+         * @param {object} data - Data about cancellation
          */
         const cancelJob = function(job, data = {}) {
             FloughInstance.emit(`CancelFlow:${job.data._flowId}`, data);
@@ -155,7 +155,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Starts a job that had been previously registered with Flough
-     * @param {String} jobType - Type of job to start
+     * @param {string} jobType - Type of job to start
      * @param [data] - Data context to be attached to the job
      * @returns {bluebird|exports|module.exports}
      */

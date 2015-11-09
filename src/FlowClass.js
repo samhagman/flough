@@ -6,10 +6,10 @@ let setPath = require('./util/setPath');
 /**
  * Builds the Flow class.
  * The Flow class handles chains of Kue jobs so that they are executed only once and at the right time.
- * @param {Object} queue - Kue queue
- * @param {Object} mongoCon - Mongoose connection
- * @param {Object} FloughInstance - The instance of the FloughAPI that will be passed to the user.
- * @param {Function} startFlow - The Flough.startFlow() API function
+ * @param {object} queue - Kue queue
+ * @param {object} mongoCon - Mongoose connection
+ * @param {object} FloughInstance - The instance of the FloughAPI that will be passed to the user.
+ * @param {function} startFlow - The Flough.startFlow() API function
  */
 export default function flowClassBuilder(queue, mongoCon, FloughInstance, startFlow) {
     let o = FloughInstance.o;
@@ -20,7 +20,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
         /**
          * Constructs an instance of the Flow object
-         * @param {Object} job - A Kue job that is used to track the progress of the Flow itself
+         * @param {object} job - A Kue job that is used to track the progress of the Flow itself
          */
         constructor(job) {
             // Setup Flow's properties
@@ -49,7 +49,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             /**
              * This will hold a counter of how many substeps have been added for a given step, which allows us to
              * dynamically assign substeps to jobs as they are called in the flow chain.
-             * @type {Object}
+             * @type {object}
              */
             this.substeps = {};
 
@@ -192,7 +192,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * Registers a Job of a certain type with this Flow to be run at the given step with the given data.
          * @param {number} step - The step for the job to run at
          * @param {string} jobType - The type of job to run (jobs registered with Flough.registerJob())
-         * @param {Object} jobData - The data to attach to the job.
+         * @param {object} jobData - The data to attach to the job.
          */
         job(step, jobType, jobData) {
 
@@ -285,7 +285,11 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             });
 
                                             // Actually start this job inside Kue.
-                                            job.save(err => Logger.error(err));
+                                            job.save(err => {
+                                                if (err) {
+                                                    Logger.error(err)
+                                                }
+                                            });
                                         })
                                     ;
                                 }
@@ -329,7 +333,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          *
          * @param step
          * @param flowType
-         * @param {Object} [jobData]
+         * @param {object} [jobData]
          * @returns {Flow}
          */
         flow(step, flowType, jobData = {}) {
@@ -428,7 +432,11 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             });
 
                                             // Actually start this job inside Kue.
-                                            flowJob.save(err => Logger.error(err));
+                                            flowJob.save(err => {
+                                                if (err) {
+                                                    Logger.error(err)
+                                                }
+                                            });
                                         })
                                     ;
                                 }
@@ -493,8 +501,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * Handles storing promise returning functions for a job at correct step in Flow instance
          * @param {number} step - The step the job was asked to run at by the user
          * @param {number} substep - The substep that Flow assigned to this job
-         * @param {Function} jobRunner - Function that will run the job
-         * @param {Function} [restartJob] - TODO Optional function to be called if this job is being restarted
+         * @param {function} jobRunner - Function that will run the job
+         * @param {function} [restartJob] - TODO Optional function to be called if this job is being restarted
          * @returns {bluebird|exports|module.exports}
          */
         handleJob(step, substep, jobRunner, restartJob = (()=> Logger.debug(`[${this.flowId}] No restartJob() passed.`))) {
@@ -531,7 +539,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             // Run the job...
                             jobRunner()
 
-                                // Complete the job...
+                            // Complete the job...
                                 .spread((job, result) => {
                                     return _this.completeJob(job, result);
                                 })
@@ -568,7 +576,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
         /**
          * Takes information about a job and persists it to mongo and updates instance
-         * @param {Object} job - A Kue job object
+         * @param {object} job - A Kue job object
          * @param {Number} step - the step this job is occurring on.
          * @param {Number} substep - the substep this job is occurring on.
          * @returns {bluebird|exports|module.exports|Job}
@@ -868,9 +876,9 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                     // Find this Flow's doc in Mongo and update the substeps taken
                     _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                        $addToSet: { substepsTaken: job.data._substep },
-                        $set:      { [relatedJobResultField]: jobResult }
-                    }, { new: true })
+                            $addToSet: { substepsTaken: job.data._substep },
+                            $set:      { [relatedJobResultField]: jobResult }
+                        }, { new: true })
                         .then((flowDoc, err) => {
                             if (err) {
                                 Logger.error(`[${_this.flowId}] Error incrementing Flow step.`);
@@ -888,9 +896,9 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                 // Update the Job in Mongo to be complete.
                                 _this.JobModel.findByIdAndUpdate(job.data._uuid, {
-                                    completed: true,
-                                    result:    jobResult
-                                }, { new: true })
+                                        completed: true,
+                                        result:    jobResult
+                                    }, { new: true })
                                     .then((jobDoc, err) => {
                                         if (err) {
                                             reject(err);
@@ -920,9 +928,9 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                 // Update the mongo doc's stepsTaken and substepsTaken
                 _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                    stepsTaken:    step,
-                    substepsTaken: []
-                }, { new: true })
+                        stepsTaken:    step,
+                        substepsTaken: []
+                    }, { new: true })
                     .then((flowDoc, err) => {
                         if (err) {
                             Logger.error(`[${_this.flowId}] Error incrementing Flow step.`);
@@ -941,7 +949,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
         /**
          * Cancels this flow, cancels all currently running jobs related to this Flow.
-         * @params {Object} [cancellationData] - TODO what should be here?
+         * @params {object} [cancellationData] - TODO what should be here?
          * @returns {bluebird|exports|module.exports|Flow}
          */
         cancel(cancellationData) {
