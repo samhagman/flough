@@ -34,7 +34,7 @@
     "browserify": "^9.0.3",
     "esprima-fb": "^15001.1.0-dev-harmony-fb",
     "faucet": "0.0.1",
-    "jscs": "^1.13.1",
+    "jscs": "^2.2.1",
     "merge-stream": "^0.1.7",
     "require-directory": "^2.1.1",
     "run-sequence": "^1.0.2",

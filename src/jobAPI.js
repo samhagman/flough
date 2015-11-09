@@ -6,9 +6,9 @@ let ObjectId = require('mongoose').Types.ObjectId;
 
 /**
  * Builds the Jobs APIs
- * @param {Object} queue - Kue queue
- * @param {Object} mongoCon - Mongoose connection
- * @param {Object} FloughInstance - FloughAPI instance that is eventually passed to the user.
+ * @param {object} queue - Kue queue
+ * @param {object} mongoCon - Mongoose connection
+ * @param {object} FloughInstance - FloughAPI instance that is eventually passed to the user.
  * @returns {{registerJob, startJob}}
  */
 export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
@@ -23,15 +23,30 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Allows a User to register a job function for repeated use by .startJob()
-     * @param {String} jobType - The string that this job should be registered under
-     * @param {Function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     * @param {string} jobType - The string that this job should be registered under
+     * @param {function} jobFunc - The User passed function that holds the job's logic
+     * @param {function} dynamicPropFunc - This is function to be run at job start time which should return an object
      *  that will be merged into the job.data of all jobs of this type.
-     * @param {Function} jobFunc - The User passed function that holds the job's logic
      */
-    function registerJob(jobType, jobFunc, dynamicPropFunc = () => {return {};}) {
+    function registerJob(jobType, jobFunc, dynamicPropFunc = () => {
+        return {};
+    }) {
 
         // Add the function to the dynamic properties functions list.
-        FloughInstance._dynamicPropFuncs[jobType] = dynamicPropFunc;
+        FloughInstance._dynamicPropFuncs[ jobType ] = dynamicPropFunc;
+
+        /**
+         * Take a job instance and cancel it.
+         * @param {object} job - A Kue job object
+         * @param {object} data - Data about cancellation
+         */
+        const cancelJob = function(job, data = {}) {
+            FloughInstance.emit(`CancelFlow:${job.data._flowId}`, data);
+            Logger.error(`Cancelling job ${job.id} | ${job.data._uuid}`);
+            job.log('Job cancelled by parent flow.');
+            job.failed();
+        };
+
 
         /**
          * Wraps the user-given job in a promise,
@@ -42,13 +57,16 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          */
         const jobWrapper = function(job) {
             Logger.info(`Starting: ${jobType}`);
-            Logger.debug(job.data);
+            //Logger.debug(`Job's data:`, job.data);
 
             return new Promise((resolve, reject) => {
 
                 job.data._stepsTaken = job.data._stepsTaken ? job.data._stepsTaken : 0;
                 job.data._substepsTaken = job.data._substepsTaken ? job.data._substepsTaken : 0;
                 job.jobLogger = jobLogger;
+                job.cancel = function(data) {
+                    cancelJob(job, data);
+                };
 
                 jobFunc(job, resolve, reject);
 
@@ -61,7 +79,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          * @param job
          * @returns {bluebird|exports|module.exports}
          */
-        const storeJobId = function(job) {
+        const updateJobInMongo = function(job) {
             return new Promise((resolve, reject) => {
                 JobModel.findById(job.data._uuid, (err, jobDoc) => {
                     if (err) {
@@ -70,10 +88,8 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                     }
                     else if (jobDoc) {
                         jobDoc.jobId = job.id;
+                        jobDoc.data = job.data;
                         jobDoc.save();
-                        if (jobDoc.jobLogs.length !== 0) {
-                            jobLogger('Job restarted.', job.data._uuid, job.id);
-                        }
                         resolve(job);
                     }
                     else {
@@ -82,6 +98,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                 });
             });
         };
+
 
         /**
          * This is the number of this type of job that will be run simultaneously before the next added job is queued
@@ -96,17 +113,21 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
             // If in devMode, do not catch errors let the process crash
             if (o.devMode) {
-                storeJobId(job)
+                updateJobInMongo(job)
+                    .tap(job => FloughInstance.once(`CancelJob:${job.data._uuid}`, data => cancelJob(job, data)))
                     .then(jobWrapper)
-                    .then((result) => done(null, result));
+                    .done((result) => done(null, result));
             }
+
             // If in production mode, catch errors to prevent crashing
             else {
-                storeJobId(job)
+                updateJobInMongo(job)
+                    .tap(job => FloughInstance.once(`CancelJob:${job.data._uuid}`, data => cancelJob(job)))
                     .then(jobWrapper)
                     .then((result) => done(null, result))
                     .catch(err => {
                         Logger.error(err.stack);
+
                         // TODO setup softShutdown(blah, blah, done, err)
                         done(err);
                     })
@@ -124,7 +145,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
      */
     function createJob(jobType, data) {
 
-        let dynamicProperties = FloughInstance._dynamicPropFuncs[jobType](data);
+        let dynamicProperties = FloughInstance._dynamicPropFuncs[ jobType ](data);
         let mergedProperties = _.merge(data, dynamicProperties);
 
         return new Promise((resolve, reject) => {
@@ -134,7 +155,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Starts a job that had been previously registered with Flough
-     * @param {String} jobType - Type of job to start
+     * @param {string} jobType - Type of job to start
      * @param [data] - Data context to be attached to the job
      * @returns {bluebird|exports|module.exports}
      */
@@ -150,6 +171,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
             // Generate a new UUID for the job if no UUID is passed.
             let alreadyPersisted = false;
+
             if (!data._uuid) {
                 data._uuid = new ObjectId(Date.now());
             }
@@ -171,10 +193,12 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
             if (data._flowId) {
                 jobFields._flowId = data._flowId;
             }
+
             // If no flowId was passed then set the flowId to 'NoFlow' to signify this is a solo job
             else {
                 jobFields._flowId = 'NoFlow';
                 data._flowId = 'NoFlow';
+                data._flowType = 'NoFlow';
             }
 
             // If no title was passed, set title to the job's type
