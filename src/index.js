@@ -83,6 +83,8 @@ function setupDefaults(o) {
     // Each time an event fires, should we return the entire job along with the event? (Causes a Redis lookup to occur)
     o.returnJobOnEvents = o.returnJobOnEvents !== false;
 
+    o.kueBaseRoute = o.kueBaseRoute || '/kue';
+
     // TODO allow job events to be turned off
     //o.jobEvents = o.jobEvents !== false;
     o.jobEvents = true;
@@ -91,10 +93,12 @@ function setupDefaults(o) {
     if (o.logger && !o.logger.advanced) {
         o.logger.func = loggerBuilder(o.devMode, o.logger.func);
     }
+
     // If user provides no logger
     else if (!(o.logger && o.logger.func)) {
         o.logger = { func: loggerBuilder(o.devMode), advanced: false };
     }
+
     // If user provides advanced logger, use user's logger exactly as is.
     else {
         if (!o.devMode) {
@@ -123,9 +127,11 @@ function setupRedis(FloughAPI) {
             let port = !socket ? (o.redis.port || 6379) : null;
             let host = !socket ? (o.redis.host || '127.0.0.1') : null;
             redisClient = redis.createClient(socket || port, host, o.redis.options);
+
             if (o.redis.auth) {
                 redisClient.auth(o.redis.auth);
             }
+
             if (o.redis.db) {
                 redisClient.select(o.redis.db);
             }
@@ -134,6 +140,7 @@ function setupRedis(FloughAPI) {
             throw new Error(`Supplied redis options or supplied redis client.`);
         }
     }
+
     // If user has passed Redis client
     else if (o.redis && o.redis.type === 'supplyClient') {
         redisClient = o.redis.client;
@@ -164,12 +171,14 @@ function setupRedis(FloughAPI) {
  */
 function setupStorage(FloughAPI) {
     let o = FloughAPI.prototype.o;
+
     switch (o.storage.type) {
         case 'mongoose' || 'mongodb':
         {
             FloughAPI.prototype.storageClient = require('./storage/mongodb')(o);
             return FloughAPI.prototype.storageClient;
         }
+
         default:
         {
             throw new Error(`Invalid storage type (options.storage.type): ${o.storage.type}`);
@@ -204,10 +213,12 @@ function loggerBuilder(devMode, passedLogger, advanced) {
             }
         };
     }
+
     // User passed a logger that supports: .warn(), .info(), .error(), .debug()
     else if (!!passedLogger && advanced) {
         return passedLogger;
     }
+
     // User passed a logger, but that logger does not support different logging functions.
     else if (!!passedLogger && !advanced) {
 
@@ -226,6 +237,7 @@ function loggerBuilder(devMode, passedLogger, advanced) {
             }
         };
     }
+
     // User passed no logger so just output to the console.
     else {
         return {
@@ -352,7 +364,7 @@ function attachEvents(queue, FloughInstance) {
         queue
             .on('job enqueue', (id, type) => {
                 internalLogger.info(`[FLOUGH][${id}][${type}] - QUEUED`);
-                const args = Array.slice(arguments);
+                const args = Array.slice(arguments);n
                 FloughInstance.emit('job enqueue', ...args);
             })
             .on('job complete', (id, result) => {
@@ -397,9 +409,10 @@ function attachEvents(queue, FloughInstance) {
  * @param {boolean} jobEvents - Should the Kue queue create jobs that emit events, or only rely on the queue's events?
  * @param {object} [redis] - If the user supplied Redis options, use them for setting up Kue queue
  * @param {object} [expressApp] - If user passed in an express app, then use it to enable Kue's interface
+ * @param {string} [kueBaseRoute] - If user passed in express app, set the port that Kue's interface will listen on.
  * @returns {bluebird|exports|module.exports}
  */
-function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expressApp}) {
+function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expressApp, kueBaseRoute}) {
 
     return new Promise((resolve, reject) => {
         let Logger = logger.func;
@@ -432,7 +445,8 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
          * of it to take effect.
          */
         if (expressApp) {
-            expressApp.use(kue.app);
+            // Allow you to set port of Kue interface
+            expressApp.use(kueBaseRoute, kue.app);
         }
 
         let numInactiveJobs;
@@ -451,16 +465,19 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                     numInactiveJobsProcessed += 1;
                     break;
                 }
+
                 case 'active':
                 {
                     numActiveJobsProcessed += 1;
                     break;
                 }
+
                 case 'failed':
                 {
                     numFailedJobsProcessed += 1;
                     break;
                 }
+
                 default:
                 {
                     resolve(queue);
@@ -491,6 +508,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                         numInactiveJobs = inactiveJobIds.length;
                         numActiveJobs = activeJobIds.length;
                         numFailedJobs = failedJobIds.length;
+
                         if (numActiveJobs === 0 && numInactiveJobs === 0 && numFailedJobs === 0) {
                             jobsCleaned();
                         }
@@ -500,16 +518,19 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                                 kue.Job.get(id, (err, job) => {
 
                                     /* A. */
+
                                     // If this job is a helper job and is still queued and it was part of a flow,
                                     // remove it.
                                     if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
                                     }
                                     /* A. */
+
                                     // Or if a job was specifically marked as a helper job also remove it.
                                     else if (job.data._helper) {
                                         job.remove();
                                     }
+
                                     jobsCleaned('inactive');
                                 });
                             });
@@ -519,20 +540,24 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                                 kue.Job.get(id, (err, job) => {
 
                                     /* A. */
+
                                     // If this job is a helper job of a flow, remove it.
                                     if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
                                         job.remove();
                                     }
                                     /* A. */
+
                                     // Or if a job was specifically marked as a helper job also remove it.
                                     else if (job.data._helper) {
                                         job.remove();
                                     }
                                     /* B. */
+
                                     // If this job represents a process, restart it.
                                     else {
                                         job.inactive();
                                     }
+
                                     jobsCleaned('active');
                                 });
                             });
@@ -545,12 +570,14 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                                         Logger.warn(`Attempted to restart job with id ${id}, but job information was no longer in redis.`);
                                     }
                                     /* B. */
+
                                     // If this job represents a flow or it is a solo job, restart it by setting it be
                                     // inactive.
                                     else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data._flowId === 'NoFlow')) {
                                         Logger.info(`Restarting job: ${job.id}`);
                                         job.inactive();
                                     }
+
                                     jobsCleaned('failed');
                                 });
                             });
@@ -583,6 +610,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
          The below code allows you to restore the queue from Mongo, would only be needed if Redis db was completely wiped
          away while there were still active jobs that were running.  Not sure where to place this code.
          */
+
         //let FlowModel = mongoCon.model('Flow');
         //
         //FlowModel

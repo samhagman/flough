@@ -183,6 +183,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                 _id:     data._uuid,
                 jobId:   -1,
                 type:    jobType,
+                title:   data.title,
                 step:    data._step ? data._step : 0,
                 substep: data._substep ? data._substep : 0,
                 data:    data,
@@ -206,13 +207,12 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                 jobFields.title = jobType;
                 data.title = jobType;
             }
-
             // Create record in mongo
             if (!alreadyPersisted) {
                 JobModel.create(jobFields, (err, jobDoc) => {
 
                     if (err) {
-                        Logger.error(err);
+                        Logger.error(err.stack);
                         reject(err);
                     }
                     else {
