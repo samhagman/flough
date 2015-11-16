@@ -1,6 +1,6 @@
 {
   "name": "flough",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "dependencies": {
     "bluebird": {
       "version": "2.9.34",
