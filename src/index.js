@@ -198,62 +198,70 @@ function setupStorage(FloughAPI) {
  */
 function loggerBuilder(devMode, passedLogger, advanced) {
 
+    // devMode
+    if (devMode) {
+        if (!!passedLogger && advanced) {
+            return passedLogger;
+        }
+
+        // User passed a logger, but that logger does not support different logging functions.
+        else if (!!passedLogger && !advanced) {
+
+            return {
+                warn(toBeLogged) {
+                    passedLogger(`[WARN] ${toBeLogged}`);
+                },
+                info(toBeLogged) {
+                    passedLogger(`[INFO] ${toBeLogged}`);
+                },
+                error(toBeLogged) {
+                    passedLogger(`[ERROR] ${toBeLogged}`);
+                },
+                debug(toBeLogged) {
+                    passedLogger(`[DEBUG] ${toBeLogged}`);
+                }
+            };
+        }
+
+        // User passed no logger so just output to the console.
+        else {
+            return {
+                warn(toBeLogged) {
+                    console.log(`[FLOUGH-WARN] ${toBeLogged}`);
+                },
+                info(toBeLogged) {
+                    console.log(`[FLOUGH-INFO] ${toBeLogged}`);
+                },
+                error(toBeLogged) {
+                    console.log(`[FLOUGH-ERROR] ${toBeLogged}`);
+                },
+                debug(toBeLogged) {
+                    console.log(`[FLOUGH-DEBUG] ${toBeLogged}`);
+                }
+            };
+        }
+    }
     // Production
-    if (!devMode) {
-        // TODO Decide what should be logged if Flough is running in production mode.
-        return {
-            warn(toBeLogged) {
-            },
-            info(toBeLogged) {
-            },
-            error(toBeLogged) {
-                console.error(`[ERROR] ${toBeLogged}`);
-            },
-            debug(toBeLogged) {
-            }
-        };
-    }
-
-    // User passed a logger that supports: .warn(), .info(), .error(), .debug()
-    else if (!!passedLogger && advanced) {
-        return passedLogger;
-    }
-
-    // User passed a logger, but that logger does not support different logging functions.
-    else if (!!passedLogger && !advanced) {
-
-        return {
-            warn(toBeLogged) {
-                passedLogger(`[WARN] ${toBeLogged}`);
-            },
-            info(toBeLogged) {
-                passedLogger(`[INFO] ${toBeLogged}`);
-            },
-            error(toBeLogged) {
-                passedLogger(`[ERROR] ${toBeLogged}`);
-            },
-            debug(toBeLogged) {
-                passedLogger(`[DEBUG] ${toBeLogged}`);
-            }
-        };
-    }
-
-    // User passed no logger so just output to the console.
     else {
-        return {
-            warn(toBeLogged) {
-                console.log(`[FLOUGH-WARN] ${toBeLogged}`);
-            },
-            info(toBeLogged) {
-                console.log(`[FLOUGH-INFO] ${toBeLogged}`);
-            },
-            error(toBeLogged) {
-                console.log(`[FLOUGH-ERROR] ${toBeLogged}`);
-            },
-            debug(toBeLogged) {
-                console.log(`[FLOUGH-DEBUG] ${toBeLogged}`);
-            }
-        };
+
+        // User passed a logger that supports: .warn(), .info(), .error(), .debug()
+        if (!!passedLogger) {
+            return passedLogger;
+        }
+        else {
+            // TODO Decide what should be logged if Flough is running in production mode.
+            return {
+                warn(toBeLogged) {
+                },
+                info(toBeLogged) {
+                },
+                error(toBeLogged) {
+                    console.error(`[ERROR] ${toBeLogged}`);
+                },
+                debug(toBeLogged) {
+                }
+            };
+        }
     }
 
 }
