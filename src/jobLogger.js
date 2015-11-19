@@ -20,7 +20,7 @@ export default function jobLogFactory(mongoCon, Logger) {
      */
     function jobLogger(msgString, UUID, jobId) {
 
-        const timeCalled = Date.now();
+        const timeCalled = new Date.now();
         const timeStampedMsg = `[${timeCalled.toISOString()}] ${msgString}`;
 
         //Logger.debug('msgString', msgString);
