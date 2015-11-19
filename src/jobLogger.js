@@ -20,6 +20,9 @@ export default function jobLogFactory(mongoCon, Logger) {
      */
     function jobLogger(msgString, UUID, jobId) {
 
+        const timeCalled = Date.now();
+        const timeStampedMsg = `[${timeCalled.toISOString()}]${msgString}`;
+
         //Logger.debug('msgString', msgString);
         //Logger.debug('UUID', UUID);
         //Logger.debug('jobId', jobId);
@@ -61,12 +64,12 @@ export default function jobLogFactory(mongoCon, Logger) {
 
                                     kueJobId = flowDoc.jobId;
 
-                                    logToKueJob(kueJobId, msgString);
+                                    logToKueJob(kueJobId, timeStampedMsg);
 
                                     // Push message into the flow doc's job logs
                                     flowDoc.jobLogs.push({
                                         step:    flowDoc.step,
-                                        message: msgString
+                                        message: timeStampedMsg
                                     });
 
                                     flowDoc.save();
@@ -80,11 +83,11 @@ export default function jobLogFactory(mongoCon, Logger) {
                     }
                     else {
                         // Push the message into the docs job logs
-                        jobDoc.jobLogs.push({ message: msgString });
+                        jobDoc.jobLogs.push({ message: timeStampedMsg });
 
                         kueJobId = jobDoc.jobId;
 
-                        logToKueJob(kueJobId, msgString);
+                        logToKueJob(kueJobId, timeStampedMsg);
 
                         // Find Flow this job belongs to, if it does belong to a flow
                         if (FlowModel.isObjectId(jobDoc.flowId)) {
@@ -101,7 +104,7 @@ export default function jobLogFactory(mongoCon, Logger) {
 
                                             step:       job.step,
                                             personHuid: job.data.personHuid,
-                                            message:    msgString
+                                            message: timeStampedMsg
                                         });
 
                                         flowDoc.save();
