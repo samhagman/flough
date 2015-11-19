@@ -21,7 +21,7 @@ export default function jobLogFactory(mongoCon, Logger) {
     function jobLogger(msgString, UUID, jobId) {
 
         const timeCalled = Date.now();
-        const timeStampedMsg = `[${timeCalled.toISOString()}]${msgString}`;
+        const timeStampedMsg = `[${timeCalled.toISOString()}] ${msgString}`;
 
         //Logger.debug('msgString', msgString);
         //Logger.debug('UUID', UUID);
