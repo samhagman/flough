@@ -277,7 +277,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             job.on('complete', (result) => {
                                                 Promise.join(relateJobPromise, updateJobInMongoPromise)
                                                     .then(() => {
-                                                        job.log('Job logic complete.');
+                                                        _this.jobLogger('Job logic complete.', job.data._uuid, job.id);
                                                         jobResolve([ job, (result ? result : null) ]);
                                                     })
                                                     .catch((err) => jobReject(err))
@@ -311,14 +311,14 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             return new Promise((resolve, reject) => {
                 _this.JobModel.findOneAndUpdate({ 'data._uuid': job.data._uuid }, { jobId: job.id }, /*{new: true}, */function(err, jobDoc) {
                     if (err) {
-                        job.log(`Error updating job in MongoDB with new job id: ${err}`);
+                        _this.jobLogger(`Error updating job in MongoDB with new job id: ${err}`, job.data._uuid, job.id);
                         Logger.error('Error updating job in MongoDB with new job id');
                         Logger.error(err);
                         reject(err);
                     }
                     else if (!jobDoc) {
                         const errorMsg = `Error updating job in MongoDB with new job id: Could not find job UUID of ${job.data._uuid} in MongoDB`;
-                        job.log(errorMsg);
+                        _this.jobLogger(errorMsg, job.data._uuid, job.id);
                         Logger.error(errorMsg);
                         reject(new Error(errorMsg));
                     }
@@ -904,7 +904,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             reject(err);
                                         }
                                         else {
-                                            job.log('Job cleanup complete.');
+                                            _this.jobLogger('Job cleanup complete.', job.data._uuid, job.id);
                                             resolve(job);
                                         }
                                     })
