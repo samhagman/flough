@@ -33,10 +33,9 @@ export default function floughBuilder() {
 
                 // Setup Kue queue
                 return setupKue(FloughAPI.prototype.o)
-                    .then((queue) => {
-                        // Setup and attach storage and Redis clients to Flough Class
-                        return [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ];
-                    }).spread((queue, storageClient, redisClient) => {
+                    // Setup and attach storage and Redis clients to Flough Class
+                    .then((queue) => [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ])
+                    .spread((queue, storageClient, redisClient) => {
 
                         // Setup search functionality for Flough Class
                         let searchFunctions = require('./searcher')(queue, redisClient, FloughAPI.prototype.o, FloughAPI.prototype.storageClient);
@@ -53,6 +52,9 @@ export default function floughBuilder() {
 
                         // Attach event functionality to Flough Instance and return the modified Flough Instance
                         FloughAPIObject = attachEvents(queue, FloughInstance);
+
+                        // Expose the kue library directly
+                        FloughAPIObject.kue = kue;
 
                         return FloughAPIObject;
                     });
@@ -372,7 +374,7 @@ function attachEvents(queue, FloughInstance) {
         queue
             .on('job enqueue', (id, type) => {
                 internalLogger.info(`[FLOUGH][${id}][${type}] - QUEUED`);
-                const args = Array.slice(arguments);n
+                const args = Array.slice(arguments);
                 FloughInstance.emit('job enqueue', ...args);
             })
             .on('job complete', (id, result) => {
