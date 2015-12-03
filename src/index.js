@@ -53,6 +53,9 @@ export default function floughBuilder() {
                         // Attach event functionality to Flough Instance and return the modified Flough Instance
                         FloughAPIObject = attachEvents(queue, FloughInstance);
 
+                        // Attach jobLogger to Flough Instance
+                        FloughAPIObject.jobLogger = require('./jobLogger')(storageClient, FloughAPIObject.o.logger.func);
+
                         // Expose the kue library directly
                         FloughAPIObject.kue = kue;
 
