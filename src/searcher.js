@@ -120,11 +120,11 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
      * @param {Array} [jobIds] - Array of Kue job ids to match
      * @param {Array} [jobUUIDs] - Array of Flough job UUIDs to match
      * @param {Array} [jobTypes] - Array of job types to match
-     * @param {boolean} [completed] - Whether or not to only return completed jobs
+     * @param {string} [completed] - Whether or not to only return completed jobs
      * @param {boolean} [_activeJobs] - Whether or not to return only active jobs
      * @returns {bluebird|exports|module.exports}
      */
-    function searchJobs({jobIds, jobUUIDs, jobTypes, completed = false, _activeJobs = true}) {
+    function searchJobs({jobIds, jobUUIDs, jobTypes, completed, _activeJobs = true}) {
 
         return new Promise((resolve, reject) => {
 
@@ -141,7 +141,11 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
             }
 
             // MongoDB Search Object
-            let searchOptions = { completed };
+            let searchOptions = {};
+
+            if (completed !== undefined) {
+                searchOptions.completed = completed;
+            }
 
             if (jobUUIDs && jobUUIDs.length !== 0) {
                 searchOptions[ 'data._uuid' ] = { $in: jobUUIDs };
@@ -163,7 +167,6 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
                 else {
                     // If they only want to return active jobs (those found in Kue) then filter out inactive jobs
                     if (_activeJobs) {
-
                         // Build promise array whose items resolve whether or not the job at the corresponding index in
                         // the jobs returned from MongoDB array (jobs) is found inside Kue or not.
                         const promArray = jobs.map((job, index) => new Promise((resolve, reject) => {
