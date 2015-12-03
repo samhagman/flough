@@ -27,7 +27,8 @@ export default function FlowSchemaBuilder(mongoose) {
             jobLogs:       [ JobLogSchema ],
             flowLogs:      [ FlowLogSchema ],
             isCancelled:   { type: Boolean, required: true, default: false },
-            completed:     { type: Boolean, required: true, default: false }
+            completed:     { type: Boolean, required: true, default: false },
+            result:        { type: Schema.Types.Mixed, default: null, required: false }
         },
         { collection: 'flow' });
 
