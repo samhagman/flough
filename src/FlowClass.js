@@ -23,35 +23,37 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * @param {object} job - A Kue job that is used to track the progress of the Flow itself
          */
         constructor(job) {
+            let _this = this;
+
             // Setup Flow's properties
-            this.mongoCon = mongoCon;
-            this.kueJob = job;
-            this.jobId = job.id;
-            this.data = job.data;
-            this.jobType = job.type;
-            this.flowId = job.data._flowId;
-            this.parentFlowId = job.data._parentFlowId;
-            this.stepsTaken = job.data._stepsTaken;
-            this.substepsTaken = job.data._substepsTaken;
-            this.completed = false;
-            this.isCancelled = false;
+            _this.mongoCon = mongoCon;
+            _this.kueJob = job;
+            _this.jobId = job.id;
+            _this.data = job.data;
+            _this.jobType = job.type;
+            _this.flowId = job.data._flowId;
+            _this.parentFlowId = job.data._parentFlowId;
+            _this.stepsTaken = job.data._stepsTaken;
+            _this.substepsTaken = job.data._substepsTaken;
+            _this.completed = false;
+            _this.isCancelled = false;
 
 
             // These are the Mongoose models for Flows and Jobs, used for searching and updating records.
-            this.FlowModel = this.mongoCon.model('flow');
-            this.JobModel = this.mongoCon.model('job');
+            _this.FlowModel = _this.mongoCon.model('flow');
+            _this.JobModel = _this.mongoCon.model('job');
 
             // This is a logger that will log messages both to the job itself (job.log) but also to persistent storage
-            this.jobLogger = require('./jobLogger')(mongoCon, Logger);
+            _this.jobLogger = require('./jobLogger')(mongoCon, Logger);
 
-            this.midSteps = {};
+            _this.midSteps = {};
 
             /**
              * This will hold a counter of how many substeps have been added for a given step, which allows us to
              * dynamically assign substeps to jobs as they are called in the flow chain.
              * @type {object}
              */
-            this.substeps = {};
+            _this.substeps = {};
 
             /**
              * Holds the job information of each job
@@ -59,13 +61,13 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
              *     data: {//job.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
              * @type {{}}
              */
-            this.relatedJobs = {};
+            _this.relatedJobs = {};
 
             /**
              * Holds jobs that are currently running for this Flow
              * @type {Array}
              */
-            this.activeJobs = [];
+            _this.activeJobs = [];
 
             /**
              * This holds an array of functions, which return promises, which resolve when the job has been all setup
@@ -73,7 +75,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
              * by the unpackPromises function (check .end() for more)
              * @type {Array}
              */
-            this.jobHandlers = [];
+            _this.jobHandlers = [];
 
             /**
              * This is the step map that is created by all the functions in this.jobHandlers.  Each key corresponds to
@@ -81,7 +83,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
              * queue)
              * @type {{String: Array}}
              */
-            this.promised = {
+            _this.promised = {
                 '0': []
             };
         }
@@ -660,7 +662,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * 3. Waits for all of the jobHandler promises to be done, that were just created.
          * 4. Then starts to run the steps of the Flow, one step at a time, using a recursive function that only calls
          * itself once all the promises it initiated at a step are complete.
-         * 5. Update Mongo and this instance of Flow that this flow has finished, once there are no more steps to call.
+         *
+         * Once end resolves, the flow function using this flow will call `done(result)` which will pass the result back
+         * to the flowAPI.js file which will then call `.setFlowResult` on an instance of this class which will both set
+         * this flow as complete and update the result the user passed inside of Mongo.
          * @returns {bluebird|exports|module.exports|Flow}
          */
         end() {
@@ -759,28 +764,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                     .then(setStepsTakenToOne)
                     .then(() => {
 
-                        // 5.
-                        // When job is complete, resolve with job and result.
-                        _this.kueJob.on('complete', (result) => {
-                            Logger.error('result', result);
-                            _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                                    completed: true,
-                                    result:    result
-                                }, { new: true })
-                                .then((flowDoc, err) => {
-                                    if (err) {
-                                        Logger.error(`[${_this.flowId}] Error ending flow.`);
-                                        Logger.error(`[ ${_this.flowId} ] ${err.stack}`);
-                                        reject(err);
-                                    }
-                                    else {
-                                        _this.completed = true;
-                                        resolve(_this);
-                                    }
-                                })
-                            ;
-                        });
-
                         // 2.
                         let jobHandlerPromises = _this.jobHandlers.map((promiseReturner) => promiseReturner());
 
@@ -871,6 +854,40 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 Logger.debug(`${step} was completed previously, move to next step.`);
                                 unpackPromises(step += 1);
                             }
+                            else if (step > lastStep) {
+                                resolve(_this);
+                            }
+                        }
+                    })
+                ;
+            });
+        }
+
+        /**
+         * Set the result of this Flow.
+         * This is called by the flowAPI.js file when it detects the flow job is done.
+         * @param result
+         * @returns {bluebird|exports|module.exports}
+         */
+        setFlowResult(result) {
+            let _this = this;
+
+            return new Promise((resolve, reject) => {
+                _this.FlowModel.findByIdAndUpdate(_this.flowId, {
+                        completed: true,
+                        result:    result
+                    }, { new: true })
+                    .then((flowDoc, err) => {
+                        if (err) {
+                            Logger.error(`[${_this.kueJob.type}][${_this.flowId}] Error updating complete flow in MongoDB. \n
+                                        $set complete => true \n\n
+                                        $set result => ${JSON.stringify(result)}`);
+                            Logger.error(`[ ${_this.flowId} ] ${err.stack}`);
+                            reject(err);
+                        }
+                        else {
+                            _this.completed = true;
+                            resolve(result);
                         }
                     })
                 ;

@@ -38,11 +38,9 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
          * @param {object} job - A Kue job that is used to track and restart the Flow
          * @returns {bluebird|exports|module.exports}
          */
-        const flowWrapper = function(job) {
+        const flowWrapper = function(job, flow) {
 
             return new Promise((resolve, reject) => {
-
-                let flow = new FlowController(job);
 
                 flowFunc(flow, resolve, reject);
 
@@ -65,22 +63,47 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
             Logger.info(`Starting: flow:${flowName}`);
             //logger.debug(job.data);
 
+            // Setup Flow Controller
+            let flow = new FlowController(job);
+
             // If in devMode do not catch errors, let process crash
             if (o.devMode) {
-                flowWrapper(job)
-                    .then((result) => done(null, result))
+                flowWrapper(job, flow)
+                    .then(result => flow.setFlowResult(result))
+                    .then(result => done(null, result))
                 ;
             }
             // In production mode catch errors to prevent crashing
             else {
-                flowWrapper(job)
-                    .then((result) => done(null, result))
+                flowWrapper(job, flow)
+                    .then(result => flow.setFlowResult(result))
+                    .then(result => done(null, result))
                     .catch(err => done(err))
                 ;
             }
 
         });
 
+    }
+
+    function updateFlowResult(result) {
+
+            _this.FlowModel.findByIdAndUpdate(_this.flowId, {
+                    completed: true,
+                    result:    result
+                }, { new: true })
+                .then((flowDoc, err) => {
+                    if (err) {
+                        Logger.error(`[${_this.kueJob.type}][${_this.flowId}] Error updating complete flow in MongoDB. \n
+                                        $set complete => true \n\n
+                                        $set result => ${JSON.stringify(result)}`);
+                        Logger.error(`[ ${_this.flowId} ] ${err.stack}`);
+                    }
+                    else {
+                        _this.completed = true;
+                    }
+                })
+            ;
     }
 
 
