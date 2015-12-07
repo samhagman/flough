@@ -46,8 +46,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             // This is a logger that will log messages both to the job itself (job.log) but also to persistent storage
             _this.jobLogger = require('./jobLogger')(mongoCon, Logger);
 
-            _this.midSteps = {};
-
             /**
              * This will hold a counter of how many substeps have been added for a given step, which allows us to
              * dynamically assign substeps to jobs as they are called in the flow chain.
@@ -109,6 +107,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                 try {
 
+                    // Listen for any cancellation event made by routes
                     FloughInstance.once(`CancelFlow:${_this.flowId}`, _this.cancel.bind(_this));
 
                     // Validate this is a valid MongoId

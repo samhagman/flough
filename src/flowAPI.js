@@ -2,6 +2,7 @@ let Promise = require('bluebird');
 let kue = require('kue');
 let _ = require('lodash');
 let ObjectId = require('mongoose').Types.ObjectId;
+let util = require('util');
 
 /**
  * Builds the Flow API
@@ -59,7 +60,6 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
         // This tells the Kue queue how to handle flow type jobs.
         queue.process(`flow:${flowName}`, jobProcessingConcurrency, (job, done) => {
 
-
             Logger.info(`Starting: flow:${flowName}`);
             //logger.debug(job.data);
 
@@ -86,24 +86,28 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
     }
 
+    /**
+     * Update MongoDB with the result of the Flow
+     * @param result
+     */
     function updateFlowResult(result) {
 
-            _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                    completed: true,
-                    result:    result
-                }, { new: true })
-                .then((flowDoc, err) => {
-                    if (err) {
-                        Logger.error(`[${_this.kueJob.type}][${_this.flowId}] Error updating complete flow in MongoDB. \n
+        _this.FlowModel.findByIdAndUpdate(_this.flowId, {
+                completed: true,
+                result:    result
+            }, { new: true })
+            .then((flowDoc, err) => {
+                if (err) {
+                    Logger.error(`[${_this.kueJob.type}][${_this.flowId}] Error updating complete flow in MongoDB. \n
                                         $set complete => true \n\n
                                         $set result => ${JSON.stringify(result)}`);
-                        Logger.error(`[ ${_this.flowId} ] ${err.stack}`);
-                    }
-                    else {
-                        _this.completed = true;
-                    }
-                })
-            ;
+                    Logger.error(`[ ${_this.flowId} ] ${err.stack}`);
+                }
+                else {
+                    _this.completed = true;
+                }
+            })
+        ;
     }
 
 

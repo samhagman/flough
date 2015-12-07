@@ -52,6 +52,7 @@ export default function floughBuilder() {
 
                         // Attach event functionality to Flough Instance and return the modified Flough Instance
                         FloughAPIObject = attachEvents(queue, FloughInstance);
+                        FloughAPIObject = attachRoutes(FloughAPIObject, storageClient, kue);
 
                         // Attach jobLogger to Flough Instance
                         FloughAPIObject.jobLogger = require('./jobLogger')(storageClient, FloughAPIObject.o.logger.func);
@@ -641,5 +642,12 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
         //;
 
     });
+}
 
+
+function attachRoutes(FloughAPIObject, storageClient, kue) {
+    const {expressApp, kueBaseRoute} = FloughAPIObject.o;
+    expressApp.use(kueBaseRoute + '/api', require('./routes')(FloughAPIObject, storageClient, kue));
+
+    return FloughAPIObject;
 }
