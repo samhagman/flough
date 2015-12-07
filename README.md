@@ -181,14 +181,35 @@ Several things to note about this flow:
 
 - The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s,  `.flow()`s, and `.execF()`s have been called on the flow.
 
-- `flow.job()` is the same as `.startJob()` except it takes a number as its first parameter which is its *step* number.  More on this later.
-
-- `flow.flow()` is the same as `.startFlow()` except it takes a number as its first parameter which is its *step* number.  This entire flow (all steps, [substeps](https://github.com/samhagman/flough#substeps), `.job()`s, `.flow()`s and `.execF()`s) will have to be completed before it is considered finished.
-
 - `.end()` returns a promise which will resolve when all the jobs have completed and injects the flow instance into the callback it takes as its only argument.
 
 - Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
+- `flow.job()` / `flow.flow()` are the same as `.startJob()` / `flow.startFlow()` with two key differences:
+
+1. `.job()` and `.flow()` take a number as an additional leading parameter which is its *step* number.  More on this later.
+
+2. `.job()` and `.flow()` can accept an object returning function instead of an object for their data which has the past related jobs injected as a parameter.
+
+Example of 2 if we assume the `tweet_something` job returns a result of when the tweet was officially posted:
+```node
+// Assuming Flough has been initialized
+Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
+
+    flow.start()
+        .job(1, 'get_website_html', { url: flow.data.url })
+        .job(2, 'tweet_something', { handle: '@hagmansam' })
+        .flow(3, 'write_to_log_file', function(relatedJobs) { return { title: 'Tweet posted', time: relatedJobs.2.1.result.timePosted })
+        .end()
+        .then(function(flow) {
+            done();
+        })
+        .catch(function(err) {
+            error(err);
+        });
+
+});
+```
 
 ### execF()
 
@@ -239,7 +260,7 @@ flow.start()
     .job(1, 'send_an_email)
     .job(2, 'write_a_file')
     .flow(3, 'restart_a_server')
-    .end()
+    .end();
 ```
 _Note: `.job()` and `.startJob()` do not require a data object to be passed in._
 

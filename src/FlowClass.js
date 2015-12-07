@@ -349,7 +349,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          *
          * @param step
          * @param flowType
-         * @param {object} [jobData]
+         * @param {object|function} [jobData]
          * @returns {Flow}
          */
         flow(step, flowType, jobData = {}) {
@@ -391,41 +391,56 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                     /* Build data to attach to the Kue job's data. */
 
+                                    // Build finalJobData from either passed object or passed function.
+                                    let finalJobData;
+                                    if (_.isFunction(jobData)) {
+                                        finalJobData = jobData(currentRelatedJobs);
+                                    }
+                                    else if (_.isObject(jobData)) {
+                                        finalJobData = jobData;
+                                    }
+                                    else {
+                                        _this.jobLogger(`Step ${step} was a flow that was not passed either an object or function for it's job data.`);
+                                        Logger.error(`[FLOW][${_this.flowId}][STEP][${step}][SUBSTEP]${substep}] was passed a bad job data.`);
+                                        Logger.error(`Bad flow data: ${JSON.stringify(jobData)}`);
+                                        jobReject(`Bad flow data: ${JSON.stringify(jobData)}`);
+                                    }
+
                                     // Attach step and substep information to the job.
-                                    jobData._step = step;
-                                    jobData._substep = substep;
-                                    jobData._flowType = flowType;
+                                    finalJobData._step = step;
+                                    finalJobData._substep = substep;
+                                    finalJobData._flowType = flowType;
 
                                     // UNLIKE IN .job(), reuse the previous flowId if there is one.
-                                    jobData._flowId = _.get(currentRelatedJobs, `${step}.${substep}.data._flowId`, null);
+                                    finalJobData._flowId = _.get(currentRelatedJobs, `${step}.${substep}.data._flowId`, null);
 
                                     // Reinitialize flow with the correct steps/substeps taken.
-                                    jobData._stepsTaken = _.get(currentRelatedJobs, `${step}.${substep}.data._stepsTaken`, null);
-                                    jobData._substepsTaken = _.get(currentRelatedJobs, `${step}.${substep}.data._substepsTaken`, null);
+                                    finalJobData._stepsTaken = _.get(currentRelatedJobs, `${step}.${substep}.data._stepsTaken`, null);
+                                    finalJobData._substepsTaken = _.get(currentRelatedJobs, `${step}.${substep}.data._substepsTaken`, null);
 
                                     // Attach past results to job's data before starting it, so users can
                                     // access these.
-                                    jobData._relatedJobs = _.get(currentRelatedJobs, `${step}.${substep}`, null);
+                                    finalJobData._relatedJobs = _.get(currentRelatedJobs, `${step - 1}`, {});
 
-                                    // Grab the previous step's results
-                                    if (step > 1) {
-                                        jobData._lastStepResult = currentRelatedJobs[ (step - 1).toString() ];
+                                    // Grab the previous step's results (if there are any)
+                                    let lastStepResult = {};
+
+                                    for (let key of Object.keys(finalJobData._relatedJobs)) {
+                                        lastStepResult[ `${key}` ] = finalJobData._relatedJobs[ key ].result;
                                     }
 
-                                    // There was no previous step
-                                    else {
-                                        jobData._lastStepResult = null;
-                                    }
+                                    finalJobData._lastStepResult = lastStepResult;
+
 
                                     // Reuse the previous UUID if there is one
-                                    jobData._uuid = jobUUID;
-                                    jobData._parentFlowId = _this.flowId;
+                                    finalJobData._uuid = jobUUID;
+                                    finalJobData._parentFlowId = _this.flowId;
 
                                     /**
                                      * Start the job.
                                      */
 
-                                    startFlow(flowType, jobData, true)
+                                    startFlow(flowType, finalJobData, true)
                                         .then(flowJob => {
 
                                             // When job is enqueued into Kue, relate the job to this flow.
