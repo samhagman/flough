@@ -12,7 +12,11 @@ export default function buildRouter(FloughAPIObject, mongoCon, kue) {
     flowRoute.delete((req, res, next) => {
 
         const flowUUID = req.params.flowUUID;
-        const errorResponse = err => res.json({ error: err, success: false });
+        const errorResponse = err => {
+            Logger.error('Error find kue job by ID to delete');
+            Logger.error(err.stack);
+            res.json({ error: err, success: false });
+        };
 
         flowModel.findById(flowUUID, (err, flow) => {
             if (err) {
@@ -21,26 +25,29 @@ export default function buildRouter(FloughAPIObject, mongoCon, kue) {
                 return errorResponse('Error finding flow by UUID to delete.', res);
             }
             else {
-                kue.Job.get(flow.jobId, (err, job) => {
-                    if (err) {
-                        Logger.error('Error find kue job by ID to delete');
-                        Logger.error(err.stack);
-                        return errorResponse('Error finding kue job by ID to be deleted.', res);
-                    }
-                    else {
-                        try {
-                            FloughAPIObject.emit(`CancelFlow:${flowUUID}`);
-                            res.json({ result: { success: true } });
+                if (flow.isCancelled) {
+                    return res.json({ error: 'Flow already cancelled.' });
+                }
+                else {
+                    kue.Job.get(flow.jobId, (err, job) => {
+                        if (err) {
+                            return errorResponse('Error finding kue job by ID to be deleted.', err);
                         }
-                        catch (err) {
-                            Logger.error('Error emitting flow cancellation event from route.');
-                            Logger.error(err.stack);
-                            return errorResponse('Error emitting cancellation event.');
+                        else {
+                            try {
+                                FloughAPIObject.emit(`CancelFlow:${flowUUID}`);
+                                res.json({ result: { success: true } });
+                            }
+                            catch (err) {
+                                Logger.error('Error emitting flow cancellation event from route.');
+                                Logger.error(err.stack);
+                                return errorResponse('Error emitting cancellation event.', err);
+                            }
                         }
-                    }
-                })
+                    });
+                }
             }
-        })
+        });
 
     });
 
