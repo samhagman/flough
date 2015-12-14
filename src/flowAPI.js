@@ -125,9 +125,9 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
                 data._flowId = new ObjectId(Date.now());
             }
 
-            if (!data._uuid) {
-                data._uuid = new ObjectId(Date.now());
-            }
+            //if (!data._uuid) {
+            //    data._uuid = new ObjectId(Date.now());
+            //}
 
             if (!data._flowType) {
                 data._flowType = flowName;

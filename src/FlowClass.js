@@ -358,6 +358,9 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
             Promise.all(_this.promised[ '0' ])
                 .then((promised) => {
+                    let initialRelatedJobs = promised[ 0 ].relatedJobs;
+                    const jobUUID = _.get(initialRelatedJobs, `${step}.${substep}.data._uuid`, null);
+
                     let substep;
 
                     /* Determine Step/Substep */
@@ -373,8 +376,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         _this.substeps[ step ] = 1;
                         substep = 1;
                     }
-
-                    let jobUUID = _.get(relatedJobs, `${step}.${substep}.data._uuid`, null);
 
                     //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
@@ -433,7 +434,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
 
                                     // Reuse the previous UUID if there is one
-                                    finalJobData._uuid = jobUUID;
+                                    //finalJobData._uuid = jobUUID;
                                     finalJobData._parentFlowId = _this.flowId;
 
                                     /**
@@ -846,7 +847,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                         })
                                         .then(() => {
                                             // Start this process again for the next step
-                                            unpackPromises(step += 1);
+                                            return unpackPromises(step + 1);
                                         })
                                         .catch((err) => {
                                             Logger.error('Error unpacking promises:');
@@ -941,12 +942,12 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 // Update the substeps taken on this flow instance
                                 _this.substepsTaken = flowDoc.substepsTaken;
 
-                                // Update the Job in Mongo to be complete.
-                                _this.JobModel.findByIdAndUpdate(job.data._uuid, {
+                                if (job.data._uuid) {
+                                    // Update the Job in Mongo to be complete.
+                                    _this.JobModel.findByIdAndUpdate(job.data._uuid, {
                                         completed: true,
                                         result:    jobResult
-                                    }, { new: true })
-                                    .then((jobDoc, err) => {
+                                    }, { new: true }, (err, jobDoc) => {
                                         if (err) {
                                             reject(err);
                                         }
@@ -954,8 +955,11 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             _this.jobLogger('Job cleanup complete.', job.data._uuid, job.id);
                                             resolve(job);
                                         }
-                                    })
-                                ;
+                                    });
+                                }
+                                else {
+                                    resolve(job);
+                                }
                             }
                         })
                     ;
