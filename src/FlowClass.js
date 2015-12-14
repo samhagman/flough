@@ -37,6 +37,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             _this.substepsTaken = job.data._substepsTaken;
             _this.completed = false;
             _this.isCancelled = false;
+            _this.loggerPrefix = `[${_this.jobType}][${_this.flowId}][${_this.kueJob.id}]`;
 
 
             // These are the Mongoose models for Flows and Jobs, used for searching and updating records.
@@ -96,7 +97,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
             let _this = this;
 
-            Logger.info(`[${_this.flowId}][${_this.jobType}] Starting init flow`);
+            Logger.info(`${_this.loggerPrefix} - START FLOW`);
 
             // Attach User passed promises to resolve before any flow.job()s run.
             _this.promised[ '0' ].concat(promiseArray);
@@ -128,7 +129,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 // The passed _id wasn't found, this is a new Flow
                                 else if (!flowDoc) {
 
-                                    Logger.info(`[${_this.flowId}] Creating new Flow in Mongo...`);
+                                    //Logger.info(`${_this.loggerPrefix} Creating new Flow in Mongo...`);
                                     _this.FlowModel.create(
                                         {
                                             _id:           _this.flowId,
@@ -150,7 +151,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             }
                                             else {
                                                 //Logger.debug('Correctly made mongo doc');
-                                                Logger.info(`[${_this.flowId}] New Flow created. Flow.start() complete.`);
+                                                //Logger.info(`[${_this.flowId}] New Flow created. Flow.start() complete.`);
                                                 resolve(_this);
                                             }
                                         })
@@ -160,13 +161,12 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 // Found the _id in Mongo, we are restarting a failed Flow
                                 else if (flowDoc) {
 
-                                    Logger.info(`[${_this.flowId}] Restarting Flow...`);
+                                    //Logger.info(`${_this.loggerPrefix} Restarting Flow...`);
 
                                     // Restart Flow with values that were saved to storage
                                     _this.stepsTaken = flowDoc.stepsTaken;
                                     _this.substepsTaken = flowDoc.substepsTaken;
                                     _this.relatedJobs = flowDoc.relatedJobs;
-                                    Logger.info(`[${_this.flowId}] Flow restarted.`);
                                     resolve(_this);
                                 }
                                 else {
@@ -535,10 +535,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * @param {function} [restartJob] - TODO Optional function to be called if this job is being restarted
          * @returns {bluebird|exports|module.exports}
          */
-        handleJob(step, substep, jobRunner, restartJob = (()=> Logger.debug(`[${this.flowId}] No restartJob() passed.`))) {
+        handleJob(step, substep, jobRunner, restartJob = (()=> Logger.debug(`${this.loggerPrefix} No restartJob() passed.`))) {
 
             let _this = this;
-            Logger.debug(`[${_this.flowId}] Handling step ${step}, substep ${substep}`);
+            //Logger.debug(`[${_this.flowId}] Handling step ${step}, substep ${substep}`);
 
             return new Promise((handleJobResolve, handleJobReject) => {
                 if (step < 1) {
@@ -584,11 +584,11 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                     // Add this job to the promisedArray, initialize if first job at this step
                     if (promised[ stepStr ]) {
                         _this.promised[ stepStr ].push(runJob);
-                        Logger.debug(`[${_this.flowId}] Added job for step: ${step}`);
+                        //Logger.debug(`[${_this.flowId}] Added job for step: ${step}`);
                         handleJobResolve();
                     }
                     else {
-                        Logger.debug(`[${_this.flowId}] Added job for step: ${step}`);
+                        //Logger.debug(`[${_this.flowId}] Added job for step: ${step}`);
                         _this.promised[ stepStr ] = [ runJob ];
                         handleJobResolve();
                     }
@@ -787,7 +787,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         // 3.
                         Promise.all(jobHandlerPromises)
                             .then(() => {
-                                Logger.debug(`[${_this.flowId}] STARTING JOBS!`);
+                                //Logger.debug(`[${_this.flowId}] STARTING JOBS!`);
 
                                 // Start running steps...
                                 unpackPromises(1);
@@ -838,7 +838,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                         // After all the jobs at this step have completed
                                         .then(() => {
 
-                                            Logger.debug(`[${_this.flowId}] ~~~~~FINISHED STEP: ${step}`);
+                                            Logger.info(`${_this.loggerPrefix} FINISHED STEP: ${step}`);
 
                                             // Finish up this step...
                                             return _this.completeStep(step)
@@ -858,15 +858,9 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     ;
                                 }
                             }
-
-                            // User put steps out of order in their flow chain
-                            //else if (!promiseReturners && _this.promised[ (step += 1).toString() ]) {
-                            //    Logger.error(`[${_this.flowId}][${_this.jobType}] STEPS OUT OF ORDER AT STEP:
-                            // ${step}`); reject(new Error(`[${_this.flowId}][${_this.jobType}] STEPS OUT OF ORDER AT
-                            // STEP: ${step}`)); }
                             else if (step <= lastStep) {
-                                Logger.debug(`${step} was completed previously, move to next step.`);
-                                unpackPromises(step += 1);
+                                //Logger.debug(`${step} was completed previously, move to next step.`);
+                                return unpackPromises(step + 1);
                             }
                             else if (step > lastStep) {
                                 resolve(_this);
@@ -1007,50 +1001,53 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          */
         cancel(cancellationData) {
             const _this = this;
-            return new Promise((resolve, reject) => {
 
-                //Logger.debug(`activeJobs:`);
-                //Logger.debug(_this.activeJobs);
+            return Promise.all(_this.promised[ '0' ]).then(() => {
 
-                _this.isCancelled = true;
+                return new Promise((resolve, reject) => {
+                    //Logger.debug(`activeJobs:`);
+                    //Logger.debug(_this.activeJobs);
 
-                const cancelFlowJob = () => {
-                    _this.kueJob.log('Flow was cancelled.');
-                    _this.jobLogger('Flow was cancelled', _this.flowId, _this.kueJob.id);
-                    _this.kueJob.failed();
-                };
+                    _this.isCancelled = true;
 
-                _this.activeJobs.forEach((job) => {
+                    const cancelFlowJob = () => {
+                        _this.kueJob.log('Flow was cancelled.');
+                        _this.jobLogger('Flow was cancelled', _this.flowId, _this.kueJob.id);
+                        _this.kueJob.failed();
+                    };
 
-                    if (job.data._flowId !== 'NoFlow') {
-                        FloughInstance.emit(`CancelFlow:${job.data._flowId}`, cancellationData);
-                    }
-                    else if (job.data._flowId) {
-                        FloughInstance.emit(`CancelJob:${job.data._uuid}`, cancellationData);
-                    }
-                    else {
-                        Logger.error('ACTIVE JOB HAD NO FLOWID, DON"T KNOW HOW TO CANCEL IT');
-                    }
-                });
+                    _this.activeJobs.forEach((job) => {
 
-                _this.FlowModel.findByIdAndUpdate(_this.flowId, { isCancelled: true }, { new: true }, (err, flowDoc) => {
-                    if (err) {
-                        Logger.error(`Error setting flow as cancelled in MongoDB. Flow ${_this.flowId} still has 'isCancelled' as false.`);
-                        Logger.error(err.stack);
-                        cancelFlowJob();
-                        reject(err);
-                    }
-                    else if (!flowDoc) {
-                        const errorMsg = `FlowId of ${_this.flowId} is not in MongoDB and could not be set to cancelled.`;
-                        Logger.error(errorMsg);
-                        cancelFlowJob();
-                        reject(errorMsg);
-                    }
-                    else {
-                        Logger.info(`Flow ${_this.flowId} cancelled successfully.`);
-                        cancelFlowJob();
-                        resolve(_this);
-                    }
+                        if (job.data._flowId !== 'NoFlow') {
+                            FloughInstance.emit(`CancelFlow:${job.data._flowId}`, cancellationData);
+                        }
+                        else if (job.data._flowId) {
+                            FloughInstance.emit(`CancelJob:${job.data._uuid}`, cancellationData);
+                        }
+                        else {
+                            Logger.error('ACTIVE JOB HAD NO FLOWID, DON"T KNOW HOW TO CANCEL IT');
+                        }
+                    });
+
+                    _this.FlowModel.findByIdAndUpdate(_this.flowId, { isCancelled: true }, { new: true }, (err, flowDoc) => {
+                        if (err) {
+                            Logger.error(`Error setting flow as cancelled in MongoDB. Flow ${_this.flowId} still has 'isCancelled' as false.`);
+                            Logger.error(err.stack);
+                            cancelFlowJob();
+                            reject(err);
+                        }
+                        else if (!flowDoc) {
+                            const errorMsg = `FlowId of ${_this.flowId} is not in MongoDB and could not be set to cancelled.`;
+                            Logger.error(errorMsg);
+                            cancelFlowJob();
+                            reject(errorMsg);
+                        }
+                        else {
+                            Logger.info(`${_this.loggerPrefix} cancelled successfully.`);
+                            cancelFlowJob();
+                            resolve(_this);
+                        }
+                    });
                 });
 
             }).uncancellable();

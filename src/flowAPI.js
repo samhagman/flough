@@ -60,7 +60,7 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
         // This tells the Kue queue how to handle flow type jobs.
         queue.process(`flow:${flowName}`, jobProcessingConcurrency, (job, done) => {
 
-            Logger.info(`Starting: flow:${flowName}`);
+            //Logger.info(`Starting: flow:${flowName}`);
             //logger.debug(job.data);
 
             // Setup Flow Controller
@@ -70,6 +70,7 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
             if (o.devMode) {
                 flowWrapper(job, flow)
                     .then(result => flow.setFlowResult(result))
+                    .tap(result => Logger.info(`[${job.type}][${flow.flowId}][${job.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`))
                     .then(result => done(null, result))
                 ;
             }
@@ -84,30 +85,6 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
         });
 
-    }
-
-    /**
-     * Update MongoDB with the result of the Flow
-     * @param result
-     */
-    function updateFlowResult(result) {
-
-        _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                completed: true,
-                result:    result
-            }, { new: true })
-            .then((flowDoc, err) => {
-                if (err) {
-                    Logger.error(`[${_this.kueJob.type}][${_this.flowId}] Error updating complete flow in MongoDB. \n
-                                        $set complete => true \n\n
-                                        $set result => ${JSON.stringify(result)}`);
-                    Logger.error(`[ ${_this.flowId} ] ${err.stack}`);
-                }
-                else {
-                    _this.completed = true;
-                }
-            })
-        ;
     }
 
 

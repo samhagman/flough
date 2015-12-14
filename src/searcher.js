@@ -51,7 +51,7 @@ function setupKueSearcher(queue, redisClient, {logger}, storageClient) {
 
                     if (err) {
                         Logger.error('Error searching for and returning all Kue jobs.');
-                        Logger.error(err);
+                        Logger.error(err.stack);
                         reject(err);
                     }
                     else {
@@ -73,7 +73,7 @@ function setupKueSearcher(queue, redisClient, {logger}, storageClient) {
 
                 searcher.end(function(err, ids) {
                     if (err) {
-                        Logger.error(err);
+                        Logger.error(err.stack);
                         reject(err);
                     }
                     else {
@@ -161,7 +161,7 @@ function setupJobSearcher(queue, redisClient, {logger}, storageClient) {
 
             jobModel.find(searchOptions, (err, jobs) => {
                 if (err) {
-                    Logger.error(err);
+                    Logger.error(err.stack);
                     reject(err);
                 }
                 else {
@@ -214,7 +214,7 @@ function setupFlowSearcher(queue, redisClient, {logger}, storageClient) {
 
             flowModel.findById(flowUUID, (err, flow) => {
                 if (err) {
-                    Logger.error(err);
+                    Logger.error(err.stack);
                     reject(err);
                 }
                 else {

@@ -291,7 +291,7 @@ function attachEvents(queue, FloughInstance) {
         // Setup queue logging events
         queue
             .on('job enqueue', (id, type) => {
-                internalLogger.info(`[FLOUGH][${id}][${type}] - QUEUED`);
+                internalLogger.info(`[${type}][${id}] - QUEUED`);
 
                 // Take all of Kue's passed arguments and emit them ourselves with the same event string
                 const args = Array.slice(arguments);
@@ -310,8 +310,8 @@ function attachEvents(queue, FloughInstance) {
                 });
             })
             .on('job complete', (id, result) => {
-                internalLogger.info(`[FLOUGH][${id}] - COMPLETE`);
-                internalLogger.debug(`[FLOUGH][${id}] - Result: ${JSON.stringify(result, null, 2)}`);
+                //internalLogger.info(`[${id}] - COMPLETE`);
+                //internalLogger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
 
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job complete', ...args);
@@ -322,8 +322,8 @@ function attachEvents(queue, FloughInstance) {
                 });
             })
             .on('job failed', (id, errorMessage) => {
-                internalLogger.error(`[FLOUGH][${id}] - FAILED`);
-                internalLogger.error(`[FLOUGH][${id}] - ${errorMessage}`);
+                internalLogger.error(`[${id}] - FAILED`);
+                internalLogger.error(`[${id}] - ${errorMessage}`);
 
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job failed', ...args);
@@ -377,19 +377,19 @@ function attachEvents(queue, FloughInstance) {
     else {
         queue
             .on('job enqueue', (id, type) => {
-                internalLogger.info(`[FLOUGH][${id}][${type}] - QUEUED`);
+                internalLogger.info(`[${type}][${id}] - QUEUED`);
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job enqueue', ...args);
             })
             .on('job complete', (id, result) => {
-                internalLogger.info(`[FLOUGH][${id}] - COMPLETE`);
-                internalLogger.debug(`[FLOUGH][${id}] - Result: ${JSON.stringify(result, null, 2)}`);
+                //internalLogger.info(`[${id}] - COMPLETE`);
+                //internalLogger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job complete', ...args);
             })
             .on('job failed', (id, errorMessage) => {
-                internalLogger.error(`[FLOUGH][${id}] - FAILED`);
-                internalLogger.error(`[FLOUGH][${id}] - ${errorMessage}`);
+                internalLogger.error(`[${id}] - FAILED`);
+                internalLogger.error(`[${id}] - ${errorMessage}`);
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job failed', ...args);
             })
@@ -588,7 +588,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                                     // If this job represents a flow or it is a solo job, restart it by setting it be
                                     // inactive.
                                     else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data._flowId === 'NoFlow')) {
-                                        Logger.info(`Restarting job: ${job.id}`);
+                                        //Logger.info(`Restarting job: ${job.id}`);
                                         job.inactive();
                                     }
 

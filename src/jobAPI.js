@@ -42,7 +42,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          */
         const cancelJob = function(job, data = {}) {
             FloughInstance.emit(`CancelFlow:${job.data._flowId}`, data);
-            Logger.error(`Cancelling job ${job.id} | ${job.data._uuid}`);
+            Logger.error(`[${job.type}][${job.data._uuid}][${job.id}] Cancelling job.`);
             job.log('Job cancelled by parent flow.');
             job.failed();
         };
@@ -56,7 +56,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          * @returns {bluebird|exports|module.exports}
          */
         const jobWrapper = function(job) {
-            Logger.info(`Starting: ${jobType}`);
+            //Logger.info(`Starting: ${jobType}`);
             //Logger.debug(`Job's data:`, job.data);
 
             return new Promise((resolve, reject) => {
@@ -83,7 +83,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
             return new Promise((resolve, reject) => {
                 JobModel.findById(job.data._uuid, (err, jobDoc) => {
                     if (err) {
-                        Logger.error(err);
+                        Logger.error(err.stack);
                         reject(err);
                     }
                     else if (jobDoc) {
