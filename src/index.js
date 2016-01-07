@@ -60,6 +60,8 @@ export default function floughBuilder() {
                         // Expose the kue library directly
                         FloughAPIObject.kue = kue;
 
+                        FloughAPIObject.queue = queue;
+
                         return FloughAPIObject;
                     });
 
@@ -354,6 +356,7 @@ function attachEvents(queue, FloughInstance) {
             .on('job failed attempt', (id) => {
                 const args = Array.slice(arguments);
                 FloughInstance.emit('job failed attempt', ...args);
+
                 kue.Job.get(id, (err, job) => {
                     FloughInstance.emit(`${job.data._uuid}:failed attempt`, job);
                     FloughInstance.emit(`${job.type}:failed attempt`, job);
