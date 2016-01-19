@@ -3,6 +3,7 @@ let kue = require('kue');
 let _ = require('lodash');
 let ObjectId = require('mongoose').Types.ObjectId;
 let util = require('util');
+const crypto = require('crypto');
 
 /**
  * Builds the Flow API
@@ -92,7 +93,7 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
      * Create the kue job but first add any dynamic properties.
      * @param flowName
      * @param data
-     * @returns {bluebird|exports|module.exports}
+     * @returns {Promise.<object>}
      */
     function createFlowJob(flowName, data) {
 
@@ -124,7 +125,11 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
             }
 
             if (!data._flowId) {
-                data._flowId = new ObjectId(Date.now());
+                const randomStr = 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    let r = crypto.randomBytes(1)[ 0 ] % 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8).toString(16);
+                    return v.toString(16);
+                });
+                data._flowId = (new ObjectId(randomStr)).toString();
             }
 
             //if (!data._uuid) {

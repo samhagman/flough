@@ -2,7 +2,7 @@ let Promise = require('bluebird');
 let kue = require('kue');
 let _ = require('lodash');
 let ObjectId = require('mongoose').Types.ObjectId;
-
+const crypto = require('crypto');
 
 /**
  * Builds the Jobs APIs
@@ -208,7 +208,11 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
             let alreadyPersisted = false;
 
             if (!data._uuid) {
-                data._uuid = new ObjectId(Date.now());
+                const randomStr = 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    let r = crypto.randomBytes(1)[ 0 ] % 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8).toString(16);
+                    return v.toString(16);
+                });
+                data._uuid = new ObjectId(randomStr);
             }
             else {
                 alreadyPersisted = true;
