@@ -189,10 +189,10 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
     /**
      * Starts a job that had been previously registered with Flough
      * @param {string} jobType - Type of job to start
-     * @param [data] - Data context to be attached to the job
+     * @param [givenData] - Data context to be attached to the job
      * @returns {bluebird|exports|module.exports}
      */
-    function startJob(jobType, data = {}) {
+    function startJob(jobType, givenData = {}) {
 
         return new Promise((resolve, reject) => {
 
@@ -201,6 +201,8 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
              * jobFields === Object to be stored in MongoDb
              * data === Object to be attached to Kue job
              */
+
+            let data = _.clone(givenData);
 
             // Generate a new UUID for the job if no UUID is passed.
             let alreadyPersisted = false;

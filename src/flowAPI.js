@@ -105,13 +105,15 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
     /**
      * Starts a Flow by attaching extra fields to the User passed data and running Kue's queue.create()
      * @param {string} flowName - Name of Flow to start
-     * @param {object} [data] - Data context to be attached to this Flow
+     * @param {object} [givenData] - Data context to be attached to this Flow
      * @param {boolean} [helper] - If this is a helper flow, it will not restart on its own after a server restart.
      * @returns {bluebird|exports|module.exports}
      */
-    function startFlow(flowName, data = {}, helper = false) {
+    function startFlow(flowName, givenData = {}, helper = false) {
 
         return new Promise((resolve, reject) => {
+
+            let data = _.clone(givenData);
 
             if (!data._stepsTaken) {
                 data._stepsTaken = -1;
