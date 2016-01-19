@@ -19,21 +19,30 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
     let jobLogger = require('./jobLogger')(mongoCon, Logger);
 
     FloughInstance._dynamicPropFuncs = {};
+    FloughInstance._jobOptions = {};
+    FloughInstance._toBeAttached = {};
 
 
     /**
      * Allows a User to register a job function for repeated use by .startJob()
      * @param {string} jobType - The string that this job should be registered under
+     * @param {object} jobOptions - Options for the job
      * @param {function} jobFunc - The User passed function that holds the job's logic
      * @param {function} dynamicPropFunc - This is function to be run at job start time which should return an object
      *  that will be merged into the job.data of all jobs of this type.
      */
-    function registerJob(jobType, jobFunc, dynamicPropFunc = () => {
+    function registerJob(jobType, jobOptions, jobFunc, dynamicPropFunc = () => {
         return {};
     }) {
 
+        if (_.isFunction(jobOptions)) {
+            jobFunc = jobOptions;
+            jobOptions = {};
+        }
+
         // Add the function to the dynamic properties functions list.
         FloughInstance._dynamicPropFuncs[ jobType ] = dynamicPropFunc;
+        FloughInstance._jobOptions[ jobType ] = jobOptions;
 
         /**
          * Take a job instance and cancel it.
@@ -63,6 +72,8 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
                 job.data._stepsTaken = job.data._stepsTaken ? job.data._stepsTaken : 0;
                 job.data._substepsTaken = job.data._substepsTaken ? job.data._substepsTaken : 0;
+                _.merge(job.data, FloughInstance._toBeAttached[ job.data._uuid ]);
+                delete FloughInstance._toBeAttached[ job.data._uuid ];
                 job.jobLogger = jobLogger;
                 job.cancel = function(data) {
                     cancelJob(job, data);
@@ -149,10 +160,19 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
             const dynamicPropFunc = FloughInstance._dynamicPropFuncs[ jobType ];
 
+            const jobOptions = FloughInstance._jobOptions[ jobType ];
+
+            const noSaveFieldNames = jobOptions.noSave || [];
+
+            var newData = _.omit(data, noSaveFieldNames);
+
+            FloughInstance._toBeAttached[ data._uuid ] = _.pick(data, noSaveFieldNames);
+
             if (_.isFunction(dynamicPropFunc)) {
-                let dynamicProperties = dynamicPropFunc(data);
-                let mergedProperties = _.merge(data, dynamicProperties);
+                let dynamicProperties = dynamicPropFunc(newData);
+                let mergedProperties = _.merge(newData, dynamicProperties);
                 resolve(queue.create(`job:${jobType}`, mergedProperties));
+
             }
             else {
                 Logger.error(`Dynamic property passed was not a function for job type ${jobType}`);
@@ -160,7 +180,8 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                 reject('Dynamic property passed was not a function.');
             }
 
-        })
+
+        });
 
 
     }
