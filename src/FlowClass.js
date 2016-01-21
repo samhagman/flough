@@ -325,23 +325,38 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             const _this = this;
 
             return new Promise((resolve, reject) => {
-                _this.JobModel.findOneAndUpdate({ 'data._uuid': job.data._uuid }, { jobId: job.id }, /*{new: true}, */function(err, jobDoc) {
-                    if (err) {
-                        _this.jobLogger(`Error updating job in MongoDB with new job id: ${err}`, job.data._uuid, job.id);
-                        Logger.error('Error updating job in MongoDB with new job id');
-                        Logger.error(err.stack);
-                        reject(err);
-                    }
-                    else if (!jobDoc) {
-                        const errorMsg = `Error updating job in MongoDB with new job id: Could not find job UUID of ${job.data._uuid} in MongoDB`;
-                        _this.jobLogger(errorMsg, job.data._uuid, job.id);
-                        Logger.error(errorMsg);
-                        reject(new Error(errorMsg));
-                    }
-                    else {
-                        resolve();
-                    }
-                })
+
+                let updateInterval;
+                let numTries = 0;
+                const maxTries = 4;
+                const clearTheInterval = () => clearInterval(updateInterval);
+
+                const updateTheJob = () => {
+                    numTries += 1;
+                    _this.JobModel.findOneAndUpdate({ 'data._uuid': job.data._uuid }, { jobId: job.id }, /*{new: true}, */function(err, jobDoc) {
+                        if (err && maxTries > 4) {
+                            clearTheInterval();
+                            _this.jobLogger(`Error updating job in MongoDB with new job id: ${err}`, job.data._uuid, job.id);
+                            Logger.error('Error updating job in MongoDB with new job id');
+                            Logger.error(err.stack);
+                            reject(err);
+                        }
+                        else if (!jobDoc && maxTries > 4) {
+                            clearTheInterval();
+                            const errorMsg = `Error updating job in MongoDB with new job id: Could not find job UUID of ${job.data._uuid} in MongoDB`;
+                            _this.jobLogger(errorMsg, job.data._uuid, job.id);
+                            Logger.error(errorMsg);
+                            reject(new Error(errorMsg));
+                        }
+                        else {
+                            clearTheInterval();
+                            resolve();
+                        }
+                    })
+                };
+
+                setInterval(updateTheJob, 1000);
+
             });
         }
 
