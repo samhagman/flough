@@ -373,8 +373,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
             Promise.all(_this.promised[ '0' ])
                 .then((promised) => {
-                    let initialRelatedJobs = promised[ 0 ].relatedJobs;
-                    const jobUUID = _.get(initialRelatedJobs, `${step}.${substep}.data._uuid`, null);
 
                     let substep;
 
@@ -391,6 +389,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         _this.substeps[ step ] = 1;
                         substep = 1;
                     }
+
+                    //let initialRelatedJobs = promised[ 0 ].relatedJobs;
+                    //const flowId = _.get(initialRelatedJobs, `${step}.${substep}.data._uuid`, null);
+
 
                     //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
@@ -428,11 +430,11 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     finalJobData._flowType = flowType;
 
                                     // UNLIKE IN .job(), reuse the previous flowId if there is one.
-                                    finalJobData._flowId = _.get(currentRelatedJobs, `${step}.${substep}.data._flowId`, null);
+                                    finalJobData._flowId = _.get(currentRelatedJobs, `${step}.${substep}.jobData._flowId`, null);
 
                                     // Reinitialize flow with the correct steps/substeps taken.
-                                    finalJobData._stepsTaken = _.get(currentRelatedJobs, `${step}.${substep}.data._stepsTaken`, null);
-                                    finalJobData._substepsTaken = _.get(currentRelatedJobs, `${step}.${substep}.data._substepsTaken`, null);
+                                    finalJobData._stepsTaken = _.get(currentRelatedJobs, `${step}.${substep}._stepsTaken`, null);
+                                    finalJobData._substepsTaken = _.get(currentRelatedJobs, `${step}.${substep}._substepsTaken`, null);
 
                                     // Attach past results to job's data before starting it, so users can
                                     // access these.
@@ -650,7 +652,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                     }
                 }, { new: true }, (err, flowDoc) => {
                     if (err) {
-                        Logger.error(`Error updating relatedJobs: ${err}`);
+                        Logger.error(`Error updating relatedJobs: ${err.stack}`);
+                        Logger.inspects(flowDoc);
                         reject(job);
                     }
 
@@ -717,29 +720,74 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         }
                         else if (flowDoc) {
 
+                            // Flows to get
+                            let subFlows = [];
+
                             // Remove relatedJobs that were added but their step/substep never completed
                             _this.relatedJobs = _(_this.relatedJobs)
                                 .pick(_.range(1, _this.stepsTaken + 2))
-                                .mapValues((value, key, obj) => {
-                                    if (key < _this.stepsTaken) {
-                                        return value;
+                                .mapValues((substepsObj, step, obj) => {
+                                    const stepNum = parseInt(step, 10);
+                                    //Logger.inspects(_this.jobType, substepsObj, step);
+                                    if (stepNum < _this.stepsTaken) {
+                                        return substepsObj;
                                     }
                                     else {
-                                        return _.pick(value, _this.substepsTaken);
+                                        //Logger.inspects(substepsObj);
+
+                                        _.forOwn(substepsObj, (flowData, substep) => {
+                                            if (!_.get(flowData, '.data._uuid', false)) {
+                                                subFlows.push({ step, substep, flowId: flowData.data._flowId });
+                                            }
+                                        });
+
+                                        if (_this.substepsTaken.length !== 0) {
+                                            return _.pick(substepsObj, _this.substepsTaken);
+                                        }
+                                        else {
+                                            return {};
+                                        }
+
                                     }
                                 })
                                 .value()
                             ;
 
-                            flowDoc.relatedJobs = _this.relatedJobs;
-                            flowDoc.save((err) => {
-                                if (err) {
-                                    reject(err);
-                                }
-                                else {
-                                    resolve();
-                                }
-                            });
+                            const attachFlowProgress = ({ step, substep, flowId }) => {
+                                return new Promise((resolve, reject) => {
+                                    _this.FlowModel.findOne(flowId, (err, doc) => {
+                                        if (err) {
+                                            Logger.error(err.stack);
+                                            reject(err);
+                                        }
+                                        else {
+
+                                            if (!_this.relatedJobs[ step ]) _this.relatedJobs[ step ] = {};
+
+                                            _this.relatedJobs[step][substep] = doc;
+
+                                            //Logger.inspects(_this.jobType, _this.relatedJobs);
+                                            resolve({step, substep, doc});
+                                        }
+                                    });
+                                });
+                            };
+
+                            Promise
+                                .all(subFlows.map(attachFlowProgress))
+                                .then((docInfos) => {
+                                    Logger.inspects(_this.jobType, docInfos, _this.relatedJobs);
+                                    flowDoc.relatedJobs = _this.relatedJobs;
+                                    flowDoc.save((err) => {
+                                        if (err) {
+                                            reject(err);
+                                        }
+                                        else {
+                                            resolve();
+                                        }
+                                    });
+                                })
+                            ;
                         }
                         else {
                             resolve();
@@ -758,6 +806,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                 return new Promise((resolve, reject) => {
                     _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
                         if (err) {
+                            Logger.error(err.stack);
+
                             reject(err);
                         }
                         else if (flowDoc) {
