@@ -26,18 +26,27 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
     /**
      * Allows a User to register a job function for repeated use by .startJob()
      * @param {string} jobType - The string that this job should be registered under
-     * @param {object} jobOptions - Options for the job
+     * @param {object} [jobOptions] - Options for the job
      * @param {function} jobFunc - The User passed function that holds the job's logic
-     * @param {function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     * @param {function} [dynamicPropFunc] - This is function to be run at job start time which should return an object
      *  that will be merged into the job.data of all jobs of this type.
      */
-    function registerJob(jobType, jobOptions, jobFunc, dynamicPropFunc = () => {
-        return {};
-    }) {
+    function registerJob(jobType, jobOptions, jobFunc, dynamicPropFunc) {
 
-        if (_.isFunction(jobOptions)) {
+        if (arguments.length === 2) {
             jobFunc = jobOptions;
             jobOptions = {};
+            dynamicPropFunc = () => { return {}; };
+        }
+        else if (arguments.length === 3) {
+            if (!_.isPlainObject(jobOptions)) {
+                dynamicPropFunc = jobFunc;
+                jobFunc = jobOptions;
+                jobOptions = {};
+            }
+            else {
+                dynamicPropFunc = (() => { return {}; });
+            }
         }
 
         // Add the function to the dynamic properties functions list.
@@ -164,13 +173,14 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
             const noSaveFieldNames = jobOptions.noSave || [];
 
-            var newData = _.omit(data, noSaveFieldNames);
+            const newData = _.omit(data, noSaveFieldNames);
 
             FloughInstance._toBeAttached[ data._uuid ] = _.pick(data, noSaveFieldNames);
 
             if (_.isFunction(dynamicPropFunc)) {
                 let dynamicProperties = dynamicPropFunc(newData);
                 let mergedProperties = _.merge(newData, dynamicProperties);
+
                 resolve(queue.create(`job:${jobType}`, mergedProperties));
 
             }
