@@ -22,17 +22,34 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Registers a function so that it can be called by .startFlow()
-     * @param {string} flowName - Name of flow (successive calls of same flowName overwrite previous Flows)
+     * @param {string} flowType - Name of flow (successive calls of same flowName overwrite previous Flows)
+     * @param {object} [flowOptions] - Options for how to process this flow
      * @param {function} flowFunc - User passed function that is the Flow's logic
-     * @param {function} dynamicPropFunc - This is function to be run at job start time which should return an object
+     * @param {function} [dynamicPropFunc] - This is function to be run at job start time which should return an object
      *  that will be merged into the job.data of all jobs of this type.
      */
-    function registerFlow(flowName, flowFunc, dynamicPropFunc = () => {
-        return {};
-    }) {
+    function registerFlow(flowType, flowOptions, flowFunc, dynamicPropFunc) {
+
+        // Handle optional arguments
+        if (arguments.length === 2) {
+            flowFunc = flowOptions;
+            flowOptions = {};
+            dynamicPropFunc = () => { return {}; };
+        }
+        else if (arguments.length === 3) {
+            if (!_.isPlainObject(flowOptions)) {
+                dynamicPropFunc = flowFunc;
+                flowFunc = flowOptions;
+                flowOptions = {};
+            }
+            else {
+                dynamicPropFunc = (() => { return {}; });
+            }
+        }
 
         // Add the function to the dynamic properties functions list.
-        FloughInstance._dynamicPropFuncs[ flowName ] = dynamicPropFunc;
+        FloughInstance._dynamicPropFuncs[ flowType ] = dynamicPropFunc;
+        FloughInstance._jobOptions[ flowType ] = flowOptions;
 
         /**
          * Starts a new FlowController Instance and then wraps User's flow function in promise and injects parameters
@@ -59,7 +76,7 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
         let jobProcessingConcurrency = 50;
 
         // This tells the Kue queue how to handle flow type jobs.
-        queue.process(`flow:${flowName}`, jobProcessingConcurrency, (job, done) => {
+        queue.process(`flow:${flowType}`, jobProcessingConcurrency, (job, done) => {
 
             //Logger.info(`Starting: flow:${flowName}`);
             //logger.debug(job.data);
@@ -91,16 +108,37 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
 
     /**
      * Create the kue job but first add any dynamic properties.
-     * @param flowName
+     * @param flowType
      * @param data
      * @returns {Promise.<object>}
      */
-    function createFlowJob(flowName, data) {
+    function createFlowJob(flowType, data) {
 
-        let dynamicProperties = FloughInstance._dynamicPropFuncs[ flowName ](data);
-        let mergedProperties = _.merge(data, dynamicProperties);
+        return new Promise((resolve, reject) => {
+            const dynamicPropFunc = FloughInstance._dynamicPropFuncs[ flowType ];
 
-        return Promise.resolve(queue.create(`flow:${flowName}`, mergedProperties));
+            const jobOptions = FloughInstance._jobOptions[ flowType ];
+
+            const noSaveFieldNames = jobOptions.noSave || [];
+
+            const newData = _.omit(data, noSaveFieldNames);
+
+            FloughInstance._toBeAttached[ data._uuid ] = _.pick(data, noSaveFieldNames);
+
+            if (_.isFunction(dynamicPropFunc)) {
+                let dynamicProperties = dynamicPropFunc(newData);
+                let mergedProperties = _.merge(newData, dynamicProperties);
+
+                resolve(queue.create(`flow:${flowType}`, mergedProperties));
+
+            }
+            else {
+                Logger.error(`Dynamic property passed was not a function for job type ${flowType}`);
+                Logger.error(util.inspect(dynamicPropFunc));
+                reject('Dynamic property passed was not a function.');
+            }
+        });
+
     }
 
     /**

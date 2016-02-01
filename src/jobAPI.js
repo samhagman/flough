@@ -33,6 +33,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
      */
     function registerJob(jobType, jobOptions, jobFunc, dynamicPropFunc) {
 
+        // Handle optional arguments
         if (arguments.length === 2) {
             jobFunc = jobOptions;
             jobOptions = {};
