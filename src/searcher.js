@@ -220,7 +220,7 @@ function setupFlowSearcher(queue, redisClient, {logger}, storageClient) {
                 else {
                     resolve(flow);
                 }
-            })
+            });
         });
     }
 
