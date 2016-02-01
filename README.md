@@ -19,6 +19,9 @@ Flough was created as a way to quickly build, update, and maintain chains of job
 - [Flow/Job Restarts](https://github.com/samhagman/flough#flowjob-restarts)
 - [Flough Events](https://github.com/samhagman/flough#flough-events)
 - [Flough Searching](https://github.com/samhagman/flough#flough-searching)
+- [Dynamic Default Properties](https://github.com/samhagman/flough#dynamic-default-properties)
+- [Job Logging](https://github.com/samhagman/flough#job-logging)
+- [Flow/Job Options Object](https://github.com/samhagman/flough#flowjob-options-object)
 
 ### [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1)
 [Initialization Options](https://github.com/samhagman/flough#flough-initialization-options)
@@ -77,28 +80,24 @@ Once you have a `Flough` instance created you can begin building!  Checkout [Ini
 A job is started like so:
 
 ```node
-// Assuming Flough has been initialized
 Flough.startJob('get_website_html', { url: 'samhagman.com' }).then(function(job) { job.save(); }));
 ```
-Yeah I know the usage here is a little wonky but it is what it is for now.  
-
-`job` here is a *slightly modified* Kue job object.
+`.startJob` takes in some parameters to start a job and returns a promise.  Inside that promise you get a `job` object that contains job details and methods.
+Finally you call `job.save()` to officially start the job.
 
 The above code would start a job with a type of `get_website_html` which had been _previously_ registered like so:
 
 ```node
-// Assuming Flough has been initialized
 Flough.registerJob('get_website_html', function(job, done, error) {
 
     console.log(job.data.url); // Prints "samhagman.com"
 
-    Website.getAsync(job.data.url, function(err, html) {
+    Website.getHTMLAsync(job.data.url, function(err, html) {
         
         if (error) {
             error(err);
         }
         else {
-            console.log({ result: html });
             done({html: html});
         }
     });
@@ -110,28 +109,37 @@ When registering a job you get three parameters injected into your function: `jo
 
 `job` is a slightly modified [Kue](https://github.com/Automattic/kue) job and still retains all functions available to that object; look at the [Kue](https://github.com/Automattic/kue) documentation for more about job events, job progress, job priorities, etc.
 
-The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the `job.jobLogger()` function.
+The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the [`job.jobLogger()`](https://github.com/samhagman/flough#job-logger) function.
 
 `done` is a function that is called to let Flough know that your job has completed.  Any JSON-_able_ object passed to this function will
-be inserted into the `job.data._relatedJobs` object and the previous step's result(s) will be easily reachable at `job.data._lastStepResult`.
+be set as the result of this job in MongoDB and also within a special related jobs property that is usable when creating [flows](https://github.com/samhagman/flough#flows).
   
-`error` is a function that lets Flough know that your job has failed. Currently passing an error instance or a string to `error` does nothing but will eventually be passed to the next job as well and/or trigger another cleanup job to run.
+`error` is a function that lets Flough know that your job has failed. Currently passing an error instance or a string to `error` will cancel the job instance and any flow it was a part of.
 
 
 ### Flows
 A Flow is a chain of Jobs and/or Flows that contains steps and optionally [substeps](https://github.com/samhagman/flough#substeps).
 
-I am going to use a completely useful example of wanting to get a website's HTML and then tweet that (or at least what will fit in a tweet) at me.
+A Flow has some nice properties:
+
+1. A Flow will never run a job or flow that has already completed again even after server restarts.
+
+2. A Flow can use the results of one job or flow as inputs into another job or flow.
+
+3. A Flow can specify that jobs or flows should run in parallel or sequentially or a in combination of the two.
+
+4. A Flow can conditionally add or remove jobs or flows dependent on previous job or flow results.
+
+As an example I am going to use a completely practical situation of wanting to get a website's HTML and then tweet that (or at least what will fit in a tweet) at me.
 
 Before showing off a flow lets register another job so we can chain them together in a flow:
 
 ```node
-// Assuming Flough has been initialized and you are NOT REQUIRING MONGOOSE IN YOUR APPLICATION
 Flough.registerJob('tweet_something', function(job, done, error) {
     
     Twitter.tweet({
-        message: job.data._lastStepResult.html, // Equals the previous jobs returned html
-        handle: job.data.handle                 // Equals '@hagmansam'
+        message: job.data.message,
+        handle:  job.data.handle
     }, function(err) {
         
         if (err) {
@@ -144,26 +152,26 @@ Flough.registerJob('tweet_something', function(job, done, error) {
     
 });
 ```
-All this job does is take a twitter handle plus the previous job's returned JSON object and then tweets the `.result` field of that JSON object.
+All this job does is take a twitter handle and a message and then tweets the message at the handle.
 
 With that out of the way...
 
 A flow is started like so:
 
 ```node
-// Assuming Flough has been initialized
 Flough.startFlow('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
 ```
 
 Which will start the flow with a type of `get_html_and_tweet_it` that was registered like so:
 
 ```node
-// Assuming Flough has been initialized
 Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
-        .job(2, 'tweet_something', { handle: '@hagmansam' })
+        .job(2, 'tweet_something', function(relatedJobs) {
+            return { handle: '@hagmansam', message: relatedJobs['1']['1'].data.result.html }
+        })
         .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
         .end()
         .then(function(flow) {
@@ -175,7 +183,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
 });
 ```
-Several things to note about this flow:
+Several small things to note about this flow:
 
 - You can pass options to a flow as the second parameter to `.startFlow()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
 
@@ -183,23 +191,64 @@ Several things to note about this flow:
 
 - `.end()` returns a promise which will resolve when all the jobs have completed and injects the flow instance into the callback it takes as its only argument.
 
-- Because `.end()` returns a promise, `.catch()` is also callable off of it, the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
+- Because `.end()` returns a promise, `.catch()` is also callable off of it; the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
-- `flow.job()` / `flow.flow()` are the same as `.startJob()` / `flow.startFlow()` with two key differences:
 
-1. `.job()` and `.flow()` take a number as an additional leading parameter which is its *step* number.  More on this later.
+Now notice that job 2, `'tweet_something'`, took a function as its second argument where the job data object usually goes.  This example shows how by passing a function you get access to the `relatedJobs` object which contains information about all previous jobs that have run.  This function must return an object which is used as the final data object for this job.
 
-2. `.job()` and `.flow()` can accept an object returning function instead of an object for their data which has the past related jobs injected as a parameter.
+You probably also noticed this weird-looking piece of code: `relatedJobs['1']['1'].data.result.html`.  Why am I storing the related jobs this way?  I'll explain.
+  
+Each `.job` and `.flow` call take a step number as the leading argument, which tells Flough in what order the jobs should run.  Multiple jobs can share the same step number ([substeps](https://github.com/samhagman/flough#substeps)), which means that `relatedJobs['1']` would be ambiguous if that step contained [substeps](https://github.com/samhagman/flough#substeps).  So jobs are given their own substep number (even if their step contains no other jobs) which is based upon the order in which they were called.  Since in the code above there are no other substeps for step 1 then `'get_website_html'` was given a substep number of 1 which results in a final path of `relatedJobs['1']['1']`.
 
-Example of 2 if we assume the `tweet_something` job returns a result of when the tweet was officially posted:
+Yes, accessing relatedJobs like this is a pain because I am using numbers as keys in a JavaScript object.  But hopefully you see that storing them like this is a good conceptual model for how Flough is running your jobs.  I will also make the suggestion of using the fantastic [lodash library](https://lodash.com/) and their [`get`](https://lodash.com/docs#get) method.  This allows you to define the path as a string `_.get(relatedJobs, '1.1.data.result.html', null)` and also give it a default return value.
+
+
+Here is the full code of that example:
 ```node
-// Assuming Flough has been initialized
+
+// First register the jobs to be used in the Flow
+Flough.registerJob('get_website_html', function(job, done, error) {
+
+    console.log(job.data.url); // Prints "samhagman.com"
+
+    Website.getHTMLAsync(job.data.url, function(err, html) {
+        
+        if (error) {
+            error(err);
+        }
+        else {
+            done({html: html});
+        }
+    });
+});
+
+
+Flough.registerJob('tweet_something', function(job, done, error) {
+    
+    Twitter.tweet({
+        message: job.data.message,
+        handle:  job.data.handle
+    }, function(err) {
+        
+        if (err) {
+            error(err);
+        }
+        else {
+            done();
+        }
+    });
+    
+});
+
+// Register the Flow
 Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
-        .job(2, 'tweet_something', { handle: '@hagmansam' })
-        .flow(3, 'write_to_log_file', function(relatedJobs) { return { title: 'Tweet posted', time: relatedJobs.2.1.result.timePosted })
+        .job(2, 'tweet_something', function(relatedJobs) {
+            return { handle: '@hagmansam', message: relatedJobs['1']['1'].data.result.html }
+        })
+        .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
         .end()
         .then(function(flow) {
             done();
@@ -209,28 +258,30 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
         });
 
 });
+
+// Run the Flow
+Flough.startFlow('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
+
 ```
 
 ### execF()
 
-The `execF(Function([relatedJobs]))` function does what it says, it executes an arbitrary function.  Sometimes you don't want to go through all the trouble of registering a job or flow for something simple you want to do between two steps.  This allows you to do that.  **The function must return a Promise.** I recommend [Bluebird](http://bluebirdjs.com/docs/getting-started.html).
+The `execF(Function([relatedJobs]))` function does what it says, it executes an arbitrary function.  Sometimes you don't want to go through all the trouble of registering a job or flow for something simple (and/or non-reusable) you want to do between two steps.  The value you resolve in the promise is used as the result of this "job".  **The function must return a Promise.** I recommend [Bluebird](http://bluebirdjs.com/docs/getting-started.html).
  
  Here is an example of `execF()` using our previous flow example:
 
 ```node
-// Assuming Flough has been initialized
 Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
         .job(2, 'tweet_something', { handle: '@hagmansam' })
-        .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
         .execF(2, function(relatedJobs) {
             return new Promise((resolve, reject) => {
             
                 // If step 1, substep 1's result has an html field equal to '<h1> My Site </h1>' do nothing
-                if (relatedJobs.1.1.html === '<h1> My Site </h1>') {
-                    resolve();
+                if (relatedJobs['1']['1'].data.html === '<h1> My Site </h1>') {
+                    resolve();  // Could return something in the resolve if you wanted 
                 }
                 else { // Otherwise cancel the flow
                     flowInstance.cancel();  // Asynchronous function
@@ -238,6 +289,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
                 }
             });
         })
+        .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
         .end()
         .then(function(flow) {
             done();
@@ -318,8 +370,6 @@ This function uses [reds](https://github.com/tj/reds) under the hood and exposes
 To use `Flough.searchKue()` you do something like this:
 
 ```node
-
-// Assuming Flough has been initialized
 Flough.search('term1 term2 term3')
         .then(function(jobsArray) {
                 console.log(jobsArray) // Prints an array of job objects
@@ -354,9 +404,7 @@ Signature: `job.jobLogger('My job log message', job.data._uuid, [job.id])`
 The job logger is similar to [Kue's](https://github.com/Automattic/kue) `job.log('My message')` but it instead will persist logs to both redis and MongoDB.  This logger is attached to both the `job` and `flow` objects.  The first parameter is your message, the second parameter is the UUID of the job and the third is an optional parameter that takes the exact `job.id` of the job.  This third parameter can be useful when a job can not be found in MongoDB yet at the time of you calling this function.
 
 
-### Dynamic Default Properties for Jobs and ~~Flows~~
-
-*Note: Flows do not currently support this feature.*
+### Dynamic Default Properties
 
 Since jobs and flows are built to be reusable there is probably some default information that you want every job or flow to have rather than having to enter it every time you want to start a job or flow.  Dynamic Default Properties give you this option by allowing you to specify a function that will be run at job start time that returns an object to be merged with the data object you provided in the `.job('job_type', data_object)` call.  
 
@@ -371,7 +419,6 @@ Also because you have access to the `job.data` **before** it is put into the que
 Here is an example:
 
 ```node
-// Assuming Flough has been initialized
 Flough.registerJob('tweet_job_uuid', function(job, done, error) {
 
     console.log(job.data.message)
@@ -398,8 +445,6 @@ Flough.registerJob('tweet_job_uuid', function(job, done, error) {
 ```
 
 ```node
-
-// Assuming Flough has been initialized
 Flough.startJob('tweet_job_uuid', { handle: '@hagmansam' }).then(function(job) { job.save(); }));
 
 // When the job starts the two console.log()s would print the following:
@@ -410,11 +455,61 @@ Here you can see that the default message was used and includes the job's UUID a
 
 Some things to note:
 
-- The dynamic property function must be passed as the third argument of `Flough.registerJob()` like `Flough.registerJob('job_type', jobFunction, objectReturningFunction)`.
+- The dynamic property function must be passed as the last argument of `Flough.registerJob()` like `Flough.registerJob('job_type', jobFunction, objectReturningFunction)`.
 
 - The dynamic property function must return a JSONable object.
 
+### Flow/Job Options Object
 
+This is the optional second argument that can be passed to either `.registerJob` or `.registerFlow` and is how a user can tweak how Flough will handle a job or flow.  Currently there is only one option available for use, but there are several more options I can see being useful in the future.
+
+For now though, that one option you can use is `noSave` which can be utilized like so:
+
+```node
+Flough.registerJob('tweet_something', { noSave: ['validator'] }, function(job, done, error) {
+
+    job.data.validator(job.data)
+        .then(function(jobData) {
+        
+            Twitter.tweet({
+                    message: jobData.message
+                    handle: jobData.handle
+                }, function(err) {
+            
+                    if (err) {
+                        error(err);
+                    }
+                    else {
+                        done();
+                    }
+                });
+                
+        })
+        .error(function(err) {
+            error(err);
+        });
+    
+});
+
+var validator = function(data) {
+    if (data.handle.substr(0, 1) === '@') {
+        return data;
+    }
+    else {
+        throw new Error('bad handle');
+    }
+};
+
+Flough.startJob('tweet_something', { validator: validator, message: 'Validate my handle.', handle: '@hagmansam' }).then(function(job) { job.save(); }));
+
+```
+
+You might be wondering how I am passing in a function to the job via `job.data` after I had previously told you that the data must be JSON.
+
+Well that is true, a job can only persist JSON to storage, but what if we want to pass something that isn't JSON for use inside our job?  Like a function?
+To do so, you can list the name of the field you would not like to store in persistent storage as a member of the `noSave` property of the options object.  All fields that are listed in this array will not be stored but will be attached onto the `job.data` object for use within the job you are registering.
+
+This allows for things like custom validators for different instances of a generic job like shown above.  Also if you would just prefer not to save certain information persistent storage but would still like that data around for use within the job, this is a good option for that as well.
 
 ## Initializing a Flough Instance
 
@@ -558,7 +653,7 @@ TODO
 
 **MIT License**
 
-Copyright (c) 2015 Sam Hagman <https://www.samhagman.com>
+Copyright (c) 2016 Sam Hagman <https://www.samhagman.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the 'Software'), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
