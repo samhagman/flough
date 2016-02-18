@@ -8,7 +8,7 @@ let setPath = require('./util/setPath');
  * The Flow class handles chains of Kue jobs so that they are executed only once and at the right time.
  * @param {object} queue - Kue queue
  * @param {object} mongoCon - Mongoose connection
- * @param {object} FloughInstance - The instance of the FloughAPI that will be passed to the user.
+ * @param {object} FloughInstance - The instance of the Flough that will be passed to the user.
  * @param {function} startFlow - The Flough.startFlow() API function
  */
 export default function flowClassBuilder(queue, mongoCon, FloughInstance, startFlow) {
@@ -231,6 +231,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                     // Build finalJobData from either passed object or passed function.
                                     let finalJobData;
+
                                     if (_.isFunction(jobData)) {
                                         finalJobData = jobData(currentRelatedJobs);
                                     }
@@ -303,7 +304,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             // Actually start this job inside Kue.
                                             job.save(err => {
                                                 if (err) {
-                                                    Logger.error(err.stack)
+                                                    Logger.error(err.stack);
                                                 }
                                             });
                                         })
@@ -352,7 +353,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             clearTheInterval();
                             resolve();
                         }
-                    })
+                    });
                 };
 
                 setInterval(updateTheJob, 1000);
@@ -411,6 +412,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                     // Build finalJobData from either passed object or passed function.
                                     let finalJobData;
+
                                     if (_.isFunction(jobData)) {
                                         finalJobData = jobData(currentRelatedJobs);
                                     }
@@ -482,7 +484,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             // Actually start this job inside Kue.
                                             flowJob.save(err => {
                                                 if (err) {
-                                                    Logger.error(err.stack)
+                                                    Logger.error(err.stack);
                                                 }
                                             });
                                         })
@@ -556,6 +558,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         handleJob(step, substep, jobRunner, restartJob = (()=> Logger.debug(`${this.loggerPrefix} No restartJob() passed.`))) {
 
             let _this = this;
+
             //Logger.debug(`[${_this.flowId}] Handling step ${step}, substep ${substep}`);
 
             return new Promise((handleJobResolve, handleJobReject) => {
@@ -602,6 +605,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                     // Add this job to the promisedArray, initialize if first job at this step
                     if (promised[ stepStr ]) {
                         _this.promised[ stepStr ].push(runJob);
+
                         //Logger.debug(`[${_this.flowId}] Added job for step: ${step}`);
                         handleJobResolve();
                     }
@@ -728,6 +732,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 .pick(_.range(1, _this.stepsTaken + 2))
                                 .mapValues((substepsObj, step, obj) => {
                                     const stepNum = parseInt(step, 10);
+
                                     //Logger.inspects(_this.jobType, substepsObj, step);
                                     if (stepNum < _this.stepsTaken) {
                                         return substepsObj;
@@ -869,7 +874,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                          * OR
                          * - Finish if no more steps.
                          * OR
-                         * - If flow was cancelled cancel all promised promises and stop recursionl
+                         * - If flow was cancelled cancel all promised promises and stop recursion
                          * @param {Number} step
                          */
                         function unpackPromises(step) {
@@ -907,7 +912,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             Logger.info(`${_this.loggerPrefix} FINISHED STEP: ${step}`);
 
                                             // Finish up this step...
-                                            return _this.completeStep(step)
+                                            return _this.completeStep(step);
 
                                         })
                                         .then(() => {
@@ -977,10 +982,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         completeJob(job, jobResult) {
             let _this = this;
             return new Promise((resolve, reject) => {
-                if (!job) {
-                    resolve(null);
-                }
-                else {
+                if (job) {
                     // Create field to update
                     const relatedJobResultField = `relatedJobs.${job.data._step}.${job.data._substep}.result`;
 
@@ -1028,6 +1030,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             }
                         })
                     ;
+                } else {
+                    resolve(null);
                 }
             });
         }

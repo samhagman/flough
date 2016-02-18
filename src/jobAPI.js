@@ -8,7 +8,7 @@ const crypto = require('crypto');
  * Builds the Jobs APIs
  * @param {object} queue - Kue queue
  * @param {object} mongoCon - Mongoose connection
- * @param {object} FloughInstance - FloughAPI instance that is eventually passed to the user.
+ * @param {object} FloughInstance - Flough instance that is eventually passed to the user.
  * @returns {{registerJob, startJob}}
  */
 export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {

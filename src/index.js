@@ -3,15 +3,15 @@ const events = require('events');
 const Promise = require('bluebird');
 const redis = require('redis');
 
-let FloughAPIObject;
+let FloughInstance;
 
 /**
  * Returns the FloughBuilder object, which just has one function: init(o);
  * @returns {*}
  */
 export default function floughBuilder() {
-    if (FloughAPIObject) {
-        return FloughAPIObject;
+    if (FloughInstance) {
+        return FloughInstance;
     }
     else {
 
@@ -20,49 +20,56 @@ export default function floughBuilder() {
             init(o) {
 
                 // Base class that inherits from the event emitter class
-                class FloughAPI {
+                class Flough {
 
                     constructor() {
                         events.EventEmitter.call(this);
                     }
                 }
-                FloughAPI.prototype.__proto__ = events.EventEmitter.prototype;
+                Flough.prototype.__proto__ = events.EventEmitter.prototype;
 
                 // Setup defaults
-                FloughAPI.prototype.o = setupDefaults(o);
+                Flough.prototype.o = setupDefaults(o);
 
                 // Setup Kue queue
-                return setupKue(FloughAPI.prototype.o)
-                    // Setup and attach storage and Redis clients to Flough Class
-                    .then((queue) => [ queue, setupStorage(FloughAPI), setupRedis(FloughAPI) ])
+                return setupKue(Flough.prototype.o)
+
+                // Setup and attach storage and Redis clients to Flough Class
+                    .then((queue) => [ queue, setupStorage(Flough), setupRedis(Flough) ])
                     .spread((queue, storageClient, redisClient) => {
 
                         // Setup search functionality for Flough Class
-                        let searchFunctions = require('./searcher')(queue, redisClient, FloughAPI.prototype.o, FloughAPI.prototype.storageClient);
-                        FloughAPI.prototype.searchJobs = searchFunctions.searchJobs;
-                        FloughAPI.prototype.searchKue = searchFunctions.searchKue;
-                        FloughAPI.prototype.searchFlows = searchFunctions.searchFlows;
+                        let searchFunctions = require('./searcher')(
+                            queue,
+                            redisClient,
+                            Flough.prototype.o,
+                            Flough.prototype.storageClient
+                        );
+
+                        Flough.prototype.searchJobs = searchFunctions.searchJobs;
+                        Flough.prototype.searchKue = searchFunctions.searchKue;
+                        Flough.prototype.searchFlows = searchFunctions.searchFlows;
 
                         // Create a Flough Instance
-                        let FloughInstance = new FloughAPI();
+                        FloughInstance = new Flough();
 
                         // Setup and attach the APIs for Flows and Jobs
                         FloughInstance = require('./jobAPI')(queue, storageClient, FloughInstance);
                         FloughInstance = require('./flowAPI')(queue, storageClient, FloughInstance);
 
                         // Attach event functionality to Flough Instance and return the modified Flough Instance
-                        FloughAPIObject = attachEvents(queue, FloughInstance);
-                        FloughAPIObject = attachRoutes(FloughAPIObject, storageClient, kue);
+                        FloughInstance = attachEvents(queue, FloughInstance);
+                        FloughInstance = attachRoutes(FloughInstance, storageClient, kue);
 
                         // Attach jobLogger to Flough Instance
-                        FloughAPIObject.jobLogger = require('./jobLogger')(storageClient, FloughAPIObject.o.logger.func);
+                        FloughInstance.jobLogger = require('./jobLogger')(storageClient, FloughInstance.o.logger.func);
 
                         // Expose the kue library directly
-                        FloughAPIObject.kue = kue;
+                        FloughInstance.kue = kue;
 
-                        FloughAPIObject.queue = queue;
+                        FloughInstance.queue = queue;
 
-                        return FloughAPIObject;
+                        return FloughInstance;
                     });
 
             }
@@ -132,8 +139,8 @@ function setupRedis(FloughAPI) {
     if (o.redis && o.redis.type === 'supplyOptions') {
         try {
             let socket = o.redis.socket;
-            let port = !socket ? (o.redis.port || 6379) : null;
-            let host = !socket ? (o.redis.host || '127.0.0.1') : null;
+            let port = socket ? null : (o.redis.port || 6379);
+            let host = socket ? null : (o.redis.host || '127.0.0.1');
             redisClient = redis.createClient(socket || port, host, o.redis.options);
 
             if (o.redis.auth) {
@@ -144,8 +151,8 @@ function setupRedis(FloughAPI) {
                 redisClient.select(o.redis.db);
             }
         }
-        catch (e) {
-            throw new Error(`Supplied redis options or supplied redis client.`);
+        catch (err) {
+            throw new Error(`Supplied redis options or supplied redis client error: ${err.stack}`);
         }
     }
 
@@ -159,8 +166,8 @@ function setupRedis(FloughAPI) {
             let host = '127.0.0.1';
             redisClient = redis.createClient(port, host);
         }
-        catch (e) {
-            throw new Error(`Supplied redis options or supplied redis client.`);
+        catch (err) {
+            throw new Error(`Supplied redis options or supplied redis client error: ${err.stack}`);
         }
     }
 
@@ -249,6 +256,7 @@ function loggerBuilder(devMode, passedLogger, advanced) {
             };
         }
     }
+
     // Production
     else {
 
@@ -278,7 +286,7 @@ function loggerBuilder(devMode, passedLogger, advanced) {
  * Make the Flough Instance listen on Kue queue events and then emit both copies of those events and other custom
  * events.
  * @param {object} queue - Kue queue
- * @param {object} FloughInstance - An instance of the FloughAPI Class
+ * @param {object} FloughInstance - An instance of the Flough Class
  * @param {boolean} returnJobOnEvents - Should Flough emit additional events (beyond Kue copies) that have full job
  *     attached?
  * @param {object} logger - Flough Internal Logging Function
@@ -474,6 +482,10 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
         let numActiveJobsProcessed = 0;
         let numFailedJobsProcessed = 0;
 
+        /**
+         * Track the number of jobs cleaned of each type and resolve when all types of jobs have been cleaned
+         * @param {string} type - Type of job
+         */
         function jobsCleaned(type) {
 
             switch (type) {
@@ -513,92 +525,12 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
 
         // TODO add error handling to all these err(s)
         if (cleanKueOnStartup) {
-            /**
-             * This handles bootstrapping the Queue when the server is restarted by
-             * A. Removing helper jobs (inside Flows), they will be restarted by the Flow they belong to.
-             * B. Setting leftover solo jobs (NOT inside Flows) and Flow jobs (jobs that track a Flow) as inactive,
-             * which will cause Kue to restart them
-             */
+
+            // Get all inactive, active, and failed jobs for cleanup
             queue.inactive((err, inactiveJobIds) => {
                 queue.active((err, activeJobIds) => {
                     queue.failed((err, failedJobIds) => {
-                        numInactiveJobs = inactiveJobIds.length;
-                        numActiveJobs = activeJobIds.length;
-                        numFailedJobs = failedJobIds.length;
-
-                        if (numActiveJobs === 0 && numInactiveJobs === 0 && numFailedJobs === 0) {
-                            jobsCleaned();
-                        }
-                        else {
-                            // Cleanup the queued jobs
-                            inactiveJobIds.forEach((id) => {
-                                kue.Job.get(id, (err, job) => {
-
-                                    /* A. */
-
-                                    // If this job is a helper job and is still queued and it was part of a flow,
-                                    // remove it.
-                                    if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
-                                        job.remove();
-                                    }
-                                    /* A. */
-
-                                    // Or if a job was specifically marked as a helper job also remove it.
-                                    else if (job.data._helper) {
-                                        job.remove();
-                                    }
-
-                                    jobsCleaned('inactive');
-                                });
-                            });
-
-                            // Cleanup the active jobs
-                            activeJobIds.forEach((id) => {
-                                kue.Job.get(id, (err, job) => {
-
-                                    /* A. */
-
-                                    // If this job is a helper job of a flow, remove it.
-                                    if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
-                                        job.remove();
-                                    }
-                                    /* A. */
-
-                                    // Or if a job was specifically marked as a helper job also remove it.
-                                    else if (job.data._helper) {
-                                        job.remove();
-                                    }
-                                    /* B. */
-
-                                    // If this job represents a process, restart it.
-                                    else {
-                                        job.inactive();
-                                    }
-
-                                    jobsCleaned('active');
-                                });
-                            });
-
-                            // Restart any process jobs that were failed because the Queue gracefully shutdown
-                            failedJobIds.forEach((id) => {
-                                kue.Job.get(id, (err, job) => {
-
-                                    if (!job) {
-                                        Logger.warn(`Attempted to restart job with id ${id}, but job information was no longer in redis.`);
-                                    }
-                                    /* B. */
-
-                                    // If this job represents a flow or it is a solo job, restart it by setting it be
-                                    // inactive.
-                                    else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data._flowId === 'NoFlow')) {
-                                        //Logger.info(`Restarting job: ${job.id}`);
-                                        job.inactive();
-                                    }
-
-                                    jobsCleaned('failed');
-                                });
-                            });
-                        }
+                        cleanupJobs(inactiveJobIds, activeJobIds, failedJobIds)
                     });
                 });
 
@@ -621,6 +553,94 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
             resolve(queue);
         }
 
+        /**
+         * This handles bootstrapping the Queue when the server is restarted by
+         * A. Removing helper jobs (inside Flows), they will be restarted by the Flow they belong to.
+         * B. Setting leftover solo jobs (NOT inside Flows) and Flow jobs (jobs that track a Flow) as inactive,
+         * which will cause Kue to restart them
+         * @param {number[]} inactiveJobIds
+         * @param {number[]} activeJobIds
+         * @param {number[]} failedJobIds
+         */
+        function cleanupJobs(inactiveJobIds, activeJobIds, failedJobIds) {
+            numInactiveJobs = inactiveJobIds.length;
+            numActiveJobs = activeJobIds.length;
+            numFailedJobs = failedJobIds.length;
+
+            if (numActiveJobs === 0 && numInactiveJobs === 0 && numFailedJobs === 0) {
+                jobsCleaned();
+            }
+            else {
+                // Cleanup the queued jobs
+                inactiveJobIds.forEach((id) => {
+                    kue.Job.get(id, (err, job) => {
+
+                        /* A. */
+
+                        // If this job is a helper job and is still queued and it was part of a flow,
+                        // remove it.
+                        if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
+                            job.remove();
+                        }
+                        /* A. */
+
+                        // Or if a job was specifically marked as a helper job also remove it.
+                        else if (job.data._helper) {
+                            job.remove();
+                        }
+
+                        jobsCleaned('inactive');
+                    });
+                });
+
+                // Cleanup the active jobs
+                activeJobIds.forEach((id) => {
+                    kue.Job.get(id, (err, job) => {
+
+                        /* A. */
+
+                        // If this job is a helper job of a flow, remove it.
+                        if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
+                            job.remove();
+                        }
+                        /* A. */
+
+                        // Or if a job was specifically marked as a helper job also remove it.
+                        else if (job.data._helper) {
+                            job.remove();
+                        }
+                        /* B. */
+
+                        // If this job represents a process, restart it.
+                        else {
+                            job.inactive();
+                        }
+
+                        jobsCleaned('active');
+                    });
+                });
+
+                // Restart any process jobs that were failed because the Queue gracefully shutdown
+                failedJobIds.forEach((id) => {
+                    kue.Job.get(id, (err, job) => {
+
+                        if (!job) {
+                            Logger.warn(`Attempted to restart job with id ${id}, but job information was no longer in redis.`);
+                        }
+                        /* B. */
+
+                        // If this job represents a flow or it is a solo job, restart it by setting it be
+                        // inactive.
+                        else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data._flowId === 'NoFlow')) {
+                            //Logger.info(`Restarting job: ${job.id}`);
+                            job.inactive();
+                        }
+
+                        jobsCleaned('failed');
+                    });
+                });
+            }
+        }
 
         /*
          TODO

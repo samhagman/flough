@@ -9,7 +9,7 @@ const crypto = require('crypto');
  * Builds the Flow API
  * @param {object} queue - Kue queue
  * @param {object} mongoCon - Mongoose Connection
- * @param {object} FloughInstance - Instance of FloughAPI that is passed to the user.
+ * @param {object} FloughInstance - Instance of Flough that is passed to the user.
  * @returns {{registerFlow, startFlow}}
  */
 export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
