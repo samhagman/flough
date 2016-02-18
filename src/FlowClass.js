@@ -313,7 +313,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 catch (err) {
                                     jobReject(err);
                                 }
-                            }).cancellable();
+                            });
                         });
                     });
                 })
@@ -493,7 +493,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 catch (err) {
                                     jobReject(err);
                                 }
-                            }).cancellable();
+                            });
                         });
                     });
 
@@ -599,7 +599,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 .then(resolve)
                                 .catch((err) => reject(err))
                             ;
-                        }).cancellable();
+                        });
                     };
 
                     // Add this job to the promisedArray, initialize if first job at this step
@@ -1123,7 +1123,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                     });
                 });
 
-            }).uncancellable();
+            });
         }
     }
 
