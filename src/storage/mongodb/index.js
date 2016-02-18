@@ -1,6 +1,5 @@
 let path = require('path');
 let fs = require('fs');
-let extend = require('extend');
 let session = require('express-session');
 let attachHelpers = require('./lib/attachHelpers');
 
@@ -10,6 +9,7 @@ export default function({storage, logger}) {
     // Setup mongoose connection
     let connection;
     let mongoose;
+
     if (storage.type === 'mongodb') {
         mongoose = require('mongoose');
 
