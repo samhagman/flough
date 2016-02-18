@@ -1,6 +1,6 @@
 {
   "name": "flough",
-  "version": "7.0.1",
+  "version": "7.0.2",
   "dependencies": {
     "accepts": {
       "version": "1.2.13",
