@@ -1,9 +1,7 @@
 # Flough - A job orchestration framework.
-=========
+[![NPM](https://nodei.co/npm/flough.png?downloads=true&downloadRank=true&stars=true)](https://nodei.co/npm/flough/) [![bitHound Overall Score](https://www.bithound.io/github/samhagman/flough/badges/score.svg)](https://www.bithound.io/github/samhagman/flough)
 
-## About
-
-Flough was created as a way to quickly build, update, and maintain chains of jobs.  Flough uses [Kue](https://github.com/Automattic/kue) and MongoDB under the hood.  More information about the internal workings of Flough can be found in [STRUCTURE.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).
+> Flough was created as a way to quickly build, update, and maintain chains of jobs.  Flough uses [Kue](https://github.com/Automattic/kue) and MongoDB under the hood.  ~~More information about the internal workings of Flough can be found in [STRUCTURE.md](https://github.com/samhagman/flough/blob/master/STRUCTURE.md).~~
 
 ## Table of Contents
 
