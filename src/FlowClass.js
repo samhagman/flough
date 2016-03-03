@@ -2,6 +2,7 @@ let Promise = require('bluebird');
 let kue = require('kue');
 let _ = require('lodash');
 let setPath = require('./util/setPath');
+const util = require('util');
 
 /**
  * Builds the Flow class.
@@ -657,7 +658,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                 }, { new: true }, (err, flowDoc) => {
                     if (err) {
                         Logger.error(`Error updating relatedJobs: ${err.stack}`);
-                        Logger.inspects(flowDoc);
+                        Logger.debug(util.inspect(flowDoc, {depth: null, colors: true}));
                         reject(job);
                     }
 
@@ -733,13 +734,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 .mapValues((substepsObj, step, obj) => {
                                     const stepNum = parseInt(step, 10);
 
-                                    //Logger.inspects(_this.jobType, substepsObj, step);
                                     if (stepNum < _this.stepsTaken) {
                                         return substepsObj;
                                     }
                                     else {
-                                        //Logger.inspects(substepsObj);
-
                                         _.forOwn(substepsObj, (flowData, substep) => {
                                             if (!_.get(flowData, '.data._uuid', false)) {
                                                 subFlows.push({ step, substep, flowId: flowData.data._flowId });
@@ -771,7 +769,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                                             _this.relatedJobs[step][substep] = doc;
 
-                                            //Logger.inspects(_this.jobType, _this.relatedJobs);
                                             resolve({step, substep, doc});
                                         }
                                     });
@@ -781,7 +778,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             Promise
                                 .all(subFlows.map(attachFlowProgress))
                                 .then((docInfos) => {
-                                    Logger.inspects(_this.jobType, docInfos, _this.relatedJobs);
                                     flowDoc.relatedJobs = _this.relatedJobs;
                                     flowDoc.save((err) => {
                                         if (err) {
