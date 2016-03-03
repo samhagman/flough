@@ -90,6 +90,13 @@ export default function flowAPIBuilder(queue, mongoCon, FloughInstance) {
                     .then(result => flow.setFlowResult(result))
                     .tap(result => Logger.info(`[${job.type}][${flow.flowId}][${job.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`))
                     .then(result => done(null, result))
+                    .catch(err => {
+                        if (err.stack) Logger.error(err.stack);
+                        else {
+                            Logger.error(JSONIFY(err));
+                        }
+                        done(err);
+                    })
                 ;
             }
             // In production mode catch errors to prevent crashing
