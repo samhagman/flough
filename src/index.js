@@ -39,7 +39,7 @@ export default function floughBuilder() {
                     .spread((queue, storageClient, redisClient) => {
 
                         // Setup search functionality for Flough Class
-                        let searchFunctions = require('./searcher')(
+                        let searchFunctions = require('./util/searcher')(
                             queue,
                             redisClient,
                             Flough.prototype.o,
@@ -54,15 +54,15 @@ export default function floughBuilder() {
                         FloughInstance = new Flough();
 
                         // Setup and attach the APIs for Flows and Jobs
-                        FloughInstance = require('./jobAPI')(queue, storageClient, FloughInstance);
-                        FloughInstance = require('./flowAPI')(queue, storageClient, FloughInstance);
+                        FloughInstance = require('./job')(queue, storageClient, FloughInstance);
+                        FloughInstance = require('./flow')(queue, storageClient, FloughInstance);
 
                         // Attach event functionality to Flough Instance and return the modified Flough Instance
                         FloughInstance = attachEvents(queue, FloughInstance);
                         FloughInstance = attachRoutes(FloughInstance, storageClient, kue);
 
                         // Attach jobLogger to Flough Instance
-                        FloughInstance.jobLogger = require('./jobLogger')(storageClient, FloughInstance.o.logger.func);
+                        FloughInstance.jobLogger = require('./util/jobLogger')(storageClient, FloughInstance.o.logger.func);
 
                         // Expose the kue library directly
                         FloughInstance.kue = kue;
@@ -680,7 +680,8 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
 
 function attachRoutes(FloughAPIObject, storageClient, kue) {
     const {expressApp, kueBaseRoute} = FloughAPIObject.o;
-    expressApp.use(kueBaseRoute + '/api', require('./routes')(FloughAPIObject, storageClient, kue));
+    const floughRouter = expressApp.Router();
+    floughRouter.use(kueBaseRoute + '/api', require('./api')(FloughAPIObject, storageClient, kue, floughRouter));
 
     return FloughAPIObject;
 }

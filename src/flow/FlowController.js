@@ -1,7 +1,7 @@
 let Promise = require('bluebird');
 let kue = require('kue');
 let _ = require('lodash');
-let setPath = require('./util/setPath');
+let setPath = require('../util/setPath');
 const util = require('util');
 
 /**
@@ -17,7 +17,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
     let Logger = o.logger.func;
 
 
-    class Flow {
+    class FlowController {
 
         /**
          * Constructs an instance of the Flow object
@@ -46,7 +46,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             _this.JobModel = _this.mongoCon.model('job');
 
             // This is a logger that will log messages both to the job itself (job.log) but also to persistent storage
-            _this.jobLogger = require('./jobLogger')(mongoCon, Logger);
+            _this.jobLogger = require('../jobLogger')(mongoCon, Logger);
 
             /**
              * This will hold a counter of how many substeps have been added for a given step, which allows us to
@@ -92,7 +92,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * Initializes the Flow, needed to finish construction of Flow instance
          * @param {bluebird[]|exports[]|module.exports[]} [promiseArray] - Array of promises to resolve before first
          *     job of flow will run, not necessarily before the .start() will run.
-         * @returns {bluebird|exports|module.exports|Flow}
+         * @returns {bluebird|exports|module.exports|FlowController}
          */
         start(promiseArray = []) {
 
@@ -367,7 +367,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * @param step
          * @param flowType
          * @param {object|function} [jobData]
-         * @returns {Flow}
+         * @returns {FlowController}
          */
         flow(step, flowType, jobData = {}) {
 
@@ -519,7 +519,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * Execute a function as a step.
          * @param step
          * @param promReturningFunc
-         * @returns {Flow}
+         * @returns {FlowController}
          */
 
         execF(step, promReturningFunc) {
@@ -704,7 +704,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * Once end resolves, the flow function using this flow will call `done(result)` which will pass the result back
          * to the flowAPI.js file which will then call `.setFlowResult` on an instance of this class which will both set
          * this flow as complete and update the result the user passed inside of Mongo.
-         * @returns {bluebird|exports|module.exports|Flow}
+         * @returns {bluebird|exports|module.exports|FlowController}
          */
         end() {
 
@@ -1066,7 +1066,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         /**
          * Cancels this flow, cancels all currently running jobs related to this Flow.
          * @params {object} [cancellationData] - TODO what should be here?
-         * @returns {bluebird|exports|module.exports|Flow}
+         * @returns {bluebird|exports|module.exports|FlowController}
          */
         cancel(cancellationData) {
             const _this = this;
@@ -1123,5 +1123,5 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         }
     }
 
-    return Flow;
+    return FlowController;
 }
