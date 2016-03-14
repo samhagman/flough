@@ -579,6 +579,11 @@
       "from": "event-emitter@>=0.3.4 <0.4.0",
       "resolved": "https://registry.npmjs.org/event-emitter/-/event-emitter-0.3.4.tgz"
     },
+    "eventemitter3": {
+      "version": "1.1.1",
+      "from": "eventemitter3@latest",
+      "resolved": "https://registry.npmjs.org/eventemitter3/-/eventemitter3-1.1.1.tgz"
+    },
     "exit": {
       "version": "0.1.2",
       "from": "exit@>=0.1.2 <0.2.0",

@@ -2,6 +2,7 @@ const kue = require('kue');
 const events = require('events');
 const Promise = require('bluebird');
 const redis = require('redis');
+const express = require('express');
 
 let FloughInstance;
 
@@ -46,27 +47,22 @@ export default function floughBuilder() {
                             Flough.prototype.storageClient
                         );
 
-                        Flough.prototype.searchJobs = searchFunctions.searchJobs;
                         Flough.prototype.searchKue = searchFunctions.searchKue;
                         Flough.prototype.searchFlows = searchFunctions.searchFlows;
 
                         // Create a Flough Instance
                         FloughInstance = new Flough();
 
-                        // Setup and attach the APIs for Flows and Jobs
-                        FloughInstance = require('./job')(queue, storageClient, FloughInstance);
-                        FloughInstance = require('./flow')(queue, storageClient, FloughInstance);
+                        // Setup and attach the APIs for Flows and
+                        FloughInstance.Flow = require('./flow')(queue, storageClient, redisClient, FloughInstance);
 
-                        // Attach event functionality to Flough Instance and return the modified Flough Instance
-                        FloughInstance = attachEvents(queue, FloughInstance);
-                        FloughInstance = attachRoutes(FloughInstance, storageClient, kue);
-
-                        // Attach jobLogger to Flough Instance
-                        FloughInstance.jobLogger = require('./util/jobLogger')(storageClient, FloughInstance.o.logger.func);
+                        // Attach flowLogger to Flough Instance
+                        FloughInstance.flowLogger = require('./util/flowLogger')(storageClient, FloughInstance.o.logger.func);
 
                         // Expose the kue library directly
                         FloughInstance.kue = kue;
 
+                        // Expose Kue queue
                         FloughInstance.queue = queue;
 
                         return FloughInstance;
@@ -283,150 +279,6 @@ function loggerBuilder(devMode, passedLogger, advanced) {
 }
 
 /**
- * Make the Flough Instance listen on Kue queue events and then emit both copies of those events and other custom
- * events.
- * @param {object} queue - Kue queue
- * @param {object} FloughInstance - An instance of the Flough Class
- * @param {boolean} returnJobOnEvents - Should Flough emit additional events (beyond Kue copies) that have full job
- *     attached?
- * @param {object} logger - Flough Internal Logging Function
- * @returns {*}
- */
-function attachEvents(queue, FloughInstance) {
-
-    let o = FloughInstance.o;
-    let internalLogger = o.logger.func;
-
-    if (o.returnJobOnEvents) {
-        // Setup queue logging events
-        queue
-            .on('job enqueue', (id, type) => {
-                internalLogger.info(`[${type}][${id}] - QUEUED`);
-
-                // Take all of Kue's passed arguments and emit them ourselves with the same event string
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job enqueue', ...args);
-
-                // Retrieve the job with the given id and emit custom events with the job attached
-                kue.Job.get(id, (err, job) => {
-                    // Event prefixed by the job's uuid
-                    FloughInstance.emit(`${job.data._uuid}:enqueue`, job);
-
-                    // Event prefixed by the job's type
-                    FloughInstance.emit(`${job.type}:enqueue`, job);
-
-                    // Event prefixed by the job's Flow ID
-                    FloughInstance.emit(`${job.data._flowId}:enqueue`, job);
-                });
-            })
-            .on('job complete', (id, result) => {
-                //internalLogger.info(`[${id}] - COMPLETE`);
-                //internalLogger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
-
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job complete', ...args);
-                kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data._uuid}:complete`, job);
-                    FloughInstance.emit(`${job.type}:complete`, job);
-                    FloughInstance.emit(`${job.data._flowId}:complete`, job);
-                });
-            })
-            .on('job failed', (id, errorMessage) => {
-                internalLogger.error(`[${id}] - FAILED`);
-                internalLogger.error(`[${id}] - ${errorMessage}`);
-
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job failed', ...args);
-                kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data._uuid}:failed`, job);
-                    FloughInstance.emit(`${job.type}:failed`, job);
-                    FloughInstance.emit(`${job.data._flowId}:failed`, job);
-                });
-            })
-            .on('job promotion', (id) => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job promotion', ...args);
-                kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data._uuid}:promotion`, job);
-                    FloughInstance.emit(`${job.type}:promotion`, job);
-                    FloughInstance.emit(`${job.data._flowId}:promotion`, job);
-                });
-            })
-            .on('job progress', (id) => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job progress', ...args);
-                kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data._uuid}:progress`, job);
-                    FloughInstance.emit(`${job.type}:progress`, job);
-                    FloughInstance.emit(`${job.data._flowId}:progress`, job);
-                });
-            })
-            .on('job failed attempt', (id) => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job failed attempt', ...args);
-
-                kue.Job.get(id, (err, job) => {
-                    FloughInstance.emit(`${job.data._uuid}:failed attempt`, job);
-                    FloughInstance.emit(`${job.type}:failed attempt`, job);
-                    FloughInstance.emit(`${job.data._flowId}:failed attempt`, job);
-                });
-            })
-            .on('job remove', (id) => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job remove', ...args);
-                kue.Job.get(id, (err, job) => {
-                    if (job) {
-
-                        FloughInstance.emit(`${job.data._uuid}:remove`, job);
-                        FloughInstance.emit(`${job.type}:remove`, job);
-                        FloughInstance.emit(`${job.data._flowId}:remove`, job);
-                    }
-                });
-            })
-        ;
-    }
-    else {
-        queue
-            .on('job enqueue', (id, type) => {
-                internalLogger.info(`[${type}][${id}] - QUEUED`);
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job enqueue', ...args);
-            })
-            .on('job complete', (id, result) => {
-                //internalLogger.info(`[${id}] - COMPLETE`);
-                //internalLogger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job complete', ...args);
-            })
-            .on('job failed', (id, errorMessage) => {
-                internalLogger.error(`[${id}] - FAILED`);
-                internalLogger.error(`[${id}] - ${errorMessage}`);
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job failed', ...args);
-            })
-            .on('job promotion', () => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job promotion', ...args);
-            })
-            .on('job progress', () => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job progress', ...args);
-            })
-            .on('job failed attempt', () => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job failed attempt', ...args);
-            })
-            .on('job remove', () => {
-                const args = Array.slice(arguments);
-                FloughInstance.emit('job remove', ...args);
-            })
-        ;
-    }
-
-    return FloughInstance;
-}
-
-/**
  * Setup the Kue queue.
  * @param {object} logger - internal logging function
  * @param {boolean} searchKue - Should the Kue queue be searchable? (Adds overhead to Kue queue)
@@ -437,7 +289,7 @@ function attachEvents(queue, FloughInstance) {
  * @param {string} [kueBaseRoute] - If user passed in express app, set the port that Kue's interface will listen on.
  * @returns {bluebird|exports|module.exports}
  */
-function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expressApp, kueBaseRoute}) {
+function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expressApp, kueBaseRoute }) {
 
     return new Promise((resolve, reject) => {
         let Logger = logger.func;
@@ -578,15 +430,8 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                         if (job) {
                             /* A. */
 
-                            // If this job is a helper job and is still queued and it was part of a flow,
-                            // remove it.
-                            if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
-                                job.remove();
-                            }
-                            /* A. */
-
-                            // Or if a job was specifically marked as a helper job also remove it.
-                            else if (job.data._helper) {
+                            // If this job represents a child flow, remove it
+                            if (job.data._isChild) {
                                 job.remove();
                             }
                         }
@@ -605,14 +450,8 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
                         if (job) {
                             /* A. */
 
-                            // If this job is a helper job of a flow, remove it.
-                            if (job.type.substr(0, 3) === 'job' && job.data._flowId !== 'NoFlow') {
-                                job.remove();
-                            }
-                            /* A. */
-
-                            // Or if a job was specifically marked as a helper job also remove it.
-                            else if (job.data._helper) {
+                            // Or if a job was specifically marked as a child job also remove it.
+                            if (job.data._isChild) {
                                 job.remove();
                             }
                             /* B. */
@@ -641,7 +480,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
 
                         // If this job represents a flow or it is a solo job, restart it by setting it be
                         // inactive.
-                        else if (job._error === 'Shutdown' && (job.type.substr(0, 3) !== 'job' || job.data._flowId === 'NoFlow')) {
+                        else if (job._error === 'Shutdown' && !job.data._isChild) {
                             //Logger.info(`Restarting job: ${job.id}`);
                             job.inactive();
                         }
@@ -661,7 +500,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
         //let FlowModel = mongoCon.model('Flow');
         //
         //FlowModel
-        //    .find({ completed: false }, { lean: true })
+        //    .find({ isCompleted: false }, { lean: true })
         //    .sort({ date: -1 })
         //    .exec((FlowDocs) => {
         //
@@ -669,19 +508,10 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
         //            // TODO do error handling on the .save((err)=>{}) method
         //            let jobParams = doc.jobData;
         //            jobParams.stepsTaken = doc.stepsTaken;
-        //            queue.create(doc.jobType, jobParams).save();
+        //            queue.create(doc.type, jobParams).save();
         //        });
         //    })
         //;
 
     });
-}
-
-
-function attachRoutes(FloughAPIObject, storageClient, kue) {
-    const {expressApp, kueBaseRoute} = FloughAPIObject.o;
-    const floughRouter = expressApp.Router();
-    floughRouter.use(kueBaseRoute + '/api', require('./api')(FloughAPIObject, storageClient, kue, floughRouter));
-
-    return FloughAPIObject;
 }

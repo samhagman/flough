@@ -1,7 +1,7 @@
-let Promise = require('bluebird');
-let kue = require('kue');
-let _ = require('lodash');
-let setPath = require('../util/setPath');
+const Promise = require('bluebird');
+const kue = require('kue');
+const _ = require('lodash');
+const setPath = require('../util/setPath');
 const util = require('util');
 
 /**
@@ -21,69 +21,68 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
         /**
          * Constructs an instance of the Flow object
-         * @param {object} job - A Kue job that is used to track the progress of the Flow itself
+         * @param {object} flowJob - A Kue flowJob that is used to track the progress of the Flow itself
          */
-        constructor(job) {
-            let _this = this;
+        constructor(flowJob) {
 
             // Setup Flow's properties
-            _this.mongoCon = mongoCon;
-            _this.kueJob = job;
-            _this.jobId = job.id;
-            _this.data = job.data;
-            _this.jobType = job.type;
-            _this.flowId = job.data._flowId;
-            _this.parentFlowId = job.data._parentFlowId;
-            _this.stepsTaken = job.data._stepsTaken;
-            _this.substepsTaken = job.data._substepsTaken;
-            _this.completed = false;
-            _this.isCancelled = false;
-            _this.loggerPrefix = `[${_this.jobType}][${_this.flowId}][${_this.kueJob.id}]`;
-
+            this.mongoCon = mongoCon;
+            this.kueJob = flowJob;
+            this.jobId = flowJob.id;
+            this.data = flowJob.data;
+            this.type = flowJob.type;
+            this.uuid = flowJob.data._uuid;
+            this.parentUUID = flowJob.data._parentUUID;
+            this.stepsTaken = flowJob.data._stepsTaken;
+            this.substepsTaken = flowJob.data._substepsTaken;
+            this.isCompleted = false;
+            this.isCancelled = false;
+            this.isParent = true;
+            this.isChild = flowJob.data._isChild;
+            this.loggerPrefix = `[${this.type}][${this.uuid}][${this.kueJob.id}]`;
 
             // These are the Mongoose models for Flows and Jobs, used for searching and updating records.
-            _this.FlowModel = _this.mongoCon.model('flow');
-            _this.JobModel = _this.mongoCon.model('job');
+            this.FlowModel = this.mongoCon.model('flow');
 
-            // This is a logger that will log messages both to the job itself (job.log) but also to persistent storage
-            _this.jobLogger = require('../jobLogger')(mongoCon, Logger);
+            // This is a logger that will log messages both to the flowJob itself (flowJob.log) but also to persistent storage
+            this.flowLogger = require('../util/flowLogger')(mongoCon, Logger);
 
             /**
              * This will hold a counter of how many substeps have been added for a given step, which allows us to
              * dynamically assign substeps to jobs as they are called in the flow chain.
              * @type {object}
              */
-            _this.substeps = {};
+            this.substeps = {};
 
             /**
-             * Holds the job information of each job
-             * @example { '1': {'1': { data: {//job.data fields//}, result: 'STEP 1, SUBSTEP 1's RESULT STR' }, '2': {
-             *     data: {//job.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
+             * Holds the flowJob information of each flowJob
+             * @example { '1': {'1': { data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 1's RESULT STR' }, '2': {
+             *     data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
              * @type {{}}
              */
-            _this.relatedJobs = {};
+            this.ancestors = {};
 
             /**
              * Holds jobs that are currently running for this Flow
-             * @type {Array}
+             * @type {array}
              */
-            _this.activeJobs = [];
+            this.activeChildren = [];
 
             /**
-             * This holds an array of functions, which return promises, which resolve when the job has been all setup
+             * This holds an array of functions, which return promises, which resolve when the flowJob has been all setup
              * and registered on the flow instance properly (in this.promised) and now are just waiting to be initiated
              * by the unpackPromises function (check .end() for more)
-             * @type {Array}
+             * @type {array}
              */
-            _this.jobHandlers = [];
+            this.flowHandlers = [];
 
             /**
              * This is the step map that is created by all the functions in this.jobHandlers.  Each key corresponds to
-             * a step and holds an array of functions that when called will start the job (by adding a job to the Kue
+             * a step and holds an array of functions that when called will start the flowJob (by adding a flowJob to the Kue
              * queue)
-             * @type {{String: Array}}
+             * @type {{string: Array}}
              */
-            _this.promised = {
+            this.promised = {
                 '0': []
             };
         }
@@ -91,10 +90,10 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         /**
          * Initializes the Flow, needed to finish construction of Flow instance
          * @param {bluebird[]|exports[]|module.exports[]} [promiseArray] - Array of promises to resolve before first
-         *     job of flow will run, not necessarily before the .start() will run.
+         *     job of flow will run, not necessarily before the .begin() will run.
          * @returns {bluebird|exports|module.exports|FlowController}
          */
-        start(promiseArray = []) {
+        begin(promiseArray = []) {
 
             let _this = this;
 
@@ -110,20 +109,20 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                 try {
 
                     // Listen for any cancellation event made by routes
-                    FloughInstance.once(`CancelFlow:${_this.flowId}`, _this.cancel.bind(_this));
+                    FloughInstance.once(`CancelFlow:${_this.uuid}`, _this.cancel.bind(_this));
 
                     // Validate this is a valid MongoId
-                    if (_this.FlowModel.isObjectId(_this.flowId)) {
+                    if (_this.FlowModel.isObjectId(_this.uuid)) {
 
-                        // Look for the passed flowId, if found => restart flow, if not => create a new flow record
-                        _this.FlowModel.findById(_this.flowId)
+                        // Look for the passed uuid, if found => restart flow, if not => create a new flow record
+                        _this.FlowModel.findById(_this.uuid)
                             .then((flowDoc, err) => {
 
                                 // Handle error
                                 if (err) {
-                                    Logger.error(`[${_this.flowId}] Error finding flowRecord in Flow constructor`);
-                                    Logger.error(`[${_this.flowId}] ${err}`);
-                                    Logger.error(`[${_this.flowId}] ${flowDoc}`);
+                                    Logger.error(`[${_this.uuid}] Error finding flowRecord in Flow constructor`);
+                                    Logger.error(`[${_this.uuid}] ${err}`);
+                                    Logger.error(`[${_this.uuid}] ${flowDoc}`);
                                     reject(err);
                                 }
 
@@ -133,17 +132,18 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     //Logger.info(`${_this.loggerPrefix} Creating new Flow in Mongo...`);
                                     _this.FlowModel.create(
                                         {
-                                            _id:           _this.flowId,
+                                            _id:           _this.uuid,
+                                            type:          _this.type,
+                                            jobId:         _this.jobId,
                                             stepsTaken:    _this.stepsTaken,
                                             substepsTaken: _this.substepsTaken,
                                             jobData:       _this.data,
-                                            jobType:       _this.jobType,
-                                            jobId:         _this.jobId,
+                                            isParent:      true,
 
                                             // Reinitialize with related jobs if this is a helper flow
-                                            relatedJobs: _this.data._relatedJobs || {},
-                                            jobLogs:     [],
-                                            flowLogs:    []
+                                            ancestors: _this.data._ancestors || {},
+                                            logs:      [],
+                                            childLogs: []
                                         })
                                         .then((flowDoc, err) => {
                                             if (err) {
@@ -152,7 +152,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                             }
                                             else {
                                                 //Logger.debug('Correctly made mongo doc');
-                                                //Logger.info(`[${_this.flowId}] New Flow created. Flow.start() complete.`);
+                                                //Logger.info(`[${_this.uuid}] New Flow created. Flow.start() complete.`);
                                                 resolve(_this);
                                             }
                                         })
@@ -167,17 +167,17 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     // Restart Flow with values that were saved to storage
                                     _this.stepsTaken = flowDoc.stepsTaken;
                                     _this.substepsTaken = flowDoc.substepsTaken;
-                                    _this.relatedJobs = flowDoc.relatedJobs;
+                                    _this.ancestors = flowDoc.ancestors;
                                     resolve(_this);
                                 }
                                 else {
-                                    reject(new Error(`[${_this.flowId}] Something went very very wrong when start()ing Flow...`));
+                                    reject(new Error(`[${_this.uuid}] Something went very very wrong when start()ing Flow...`));
                                 }
                             })
                         ;
                     }
                     else {
-                        reject(new Error(`[${_this.flowId}] flowId passed to Flow.start() is not a valid ObjectId.`));
+                        reject(new Error(`[${_this.uuid}] uuid passed to Flow.start() is not a valid ObjectId.`));
                     }
 
                 } catch (err) {
@@ -191,16 +191,19 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         }
 
         /**
-         * Registers a Job of a certain type with this Flow to be run at the given step with the given data.
-         * @param {number} step - The step for the job to run at
-         * @param {string} jobType - The type of job to run (jobs registered with Flough.registerJob())
-         * @param {object|function} jobData - The data to attach to the job or a function returning the data.
+         *
+         * @param step
+         * @param type
+         * @param {object|function} [flowData]
+         * @returns {FlowController}
          */
-        job(step, jobType, jobData = {}) {
+        flow(step, type, flowData = {}) {
 
             let _this = this;
+
             Promise.all(_this.promised[ '0' ])
                 .then((promised) => {
+
                     let substep;
 
                     /* Determine Step/Substep */
@@ -217,93 +220,100 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         substep = 1;
                     }
 
+                    //let initialancestors = promised[ 0 ].ancestors;
+                    //const uuid = _.get(initialancestors, `${step}.${substep}.data._uuid`, null);
+
+
                     //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
                     /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
 
                     // I never want to type job handler again...
-                    _this.jobHandlers.push(() => {
+                    _this.flowHandlers.push(() => {
 
-                        // .handleJob() will eventually determine when and if to run this job based on step, substep,
+                        // .handleChild() will eventually determine when and if to run this job based on step, substep,
                         // and previous completion
-                        return _this.handleJob(step, substep, (currentRelatedJobs) => {
-                            return new Promise((jobResolve, jobReject) => {
+                        return _this.handleChild(step, substep, (currentAncestors) => {
+                            return new Promise((flowResolve, flowReject) => {
                                 try {
+
+                                    /* Build data to attach to the Kue job's data. */
 
                                     // Build finalJobData from either passed object or passed function.
                                     let finalJobData;
 
-                                    if (_.isFunction(jobData)) {
-                                        finalJobData = jobData(currentRelatedJobs);
+                                    if (_.isFunction(flowData)) {
+                                        finalJobData = flowData(currentAncestors);
                                     }
-                                    else if (_.isObject(jobData)) {
-                                        finalJobData = jobData;
+                                    else if (_.isObject(flowData)) {
+                                        finalJobData = flowData;
                                     }
                                     else {
-                                        _this.jobLogger(`Step ${step} was a job that was not passed either an object or function for it's job data.`);
-                                        Logger.error(`[FLOW][${_this.flowId}][STEP][${step}][SUBSTEP]${substep}] was passed a bad job data.`);
-                                        Logger.error(`Bad Job data: ${JSON.stringify(jobData)}`);
-                                        jobReject(`Bad Job data: ${JSON.stringify(jobData)}`);
+                                        _this.flowLogger(`Step ${step} was a flow that was not passed either an object or function for it's job data.`);
+                                        Logger.error(`[FLOW][${_this.uuid}][STEP][${step}][SUBSTEP]${substep}] was passed a bad job data.`);
+                                        Logger.error(`Bad flow data: ${JSON.stringify(flowData)}`);
+                                        flowReject(`Bad flow data: ${JSON.stringify(flowData)}`);
                                     }
-
-
-                                    //Logger.debug('relatedJobs in job: ', JSONIFY(relatedJobs));
-                                    let jobUUID = _.get(currentRelatedJobs, `${step}.${substep}.data._uuid`, null);
-
-                                    /* Build data to attach to the Kue job's data. */
 
                                     // Attach step and substep information to the job.
                                     finalJobData._step = step;
                                     finalJobData._substep = substep;
-                                    finalJobData._flowId = _this.flowId;
-                                    finalJobData._flowType = _this.data._flowType;
+                                    finalJobData._type = type;
+
+                                    // Reuse the previous uuid if there is one.
+                                    finalJobData._uuid = _.get(currentAncestors, `${step}.${substep}.jobData._uuid`, null);
+
+                                    // Reinitialize flow with the correct steps/substeps taken.
+                                    finalJobData._stepsTaken = _.get(currentAncestors, `${step}.${substep}._stepsTaken`, null);
+                                    finalJobData._substepsTaken = _.get(currentAncestors, `${step}.${substep}._substepsTaken`, null);
 
                                     // Attach past results to job's data before starting it, so users can
                                     // access these.
-                                    finalJobData._relatedJobs = _.get(currentRelatedJobs, `${step - 1}`, {});
+                                    finalJobData._ancestors = _.get(currentAncestors, `${step - 1}`, {});
 
                                     // Grab the previous step's results (if there are any)
                                     let lastStepResult = {};
 
-                                    for (let key of Object.keys(finalJobData._relatedJobs)) {
-                                        lastStepResult[ `${key}` ] = finalJobData._relatedJobs[ key ].result;
+                                    for (let key of Object.keys(finalJobData._ancestors)) {
+                                        lastStepResult[ `${key}` ] = finalJobData._ancestors[ key ].result;
                                     }
 
                                     finalJobData._lastStepResult = lastStepResult;
 
-
-                                    // Reuse the previous UUID if there is one
-                                    finalJobData._uuid = jobUUID;
-
+                                    // Set parent values on child flow
+                                    finalJobData._parentUUID = _this.uuid;
+                                    finalJobData._parentType = _this.type;
 
                                     /**
-                                     * Start the job.
+                                     * Start the flow.
                                      */
 
-                                    FloughInstance.startJob(jobType, finalJobData)
-                                        .then(job => {
+                                    startFlow(type, finalJobData, true)
+                                        .then(flowJob => {
 
                                             // When job is enqueued into Kue, relate the job to this flow.
-                                            let relateJobPromise;
-                                            let updateJobInMongoPromise;
-                                            job.on('enqueue', () => {
-                                                relateJobPromise = _this.relateJob(job, step, substep);
-                                                updateJobInMongoPromise = _this.updateJob(job, step, substep);
+                                            let updateAncestorsPromise;
+                                            let updateJobIdPromise;
+                                            flowJob.on('enqueue', () => {
+
+                                                // TODO? Maybe have to also update flow's jobId lke in job function
+                                                updateAncestorsPromise = _this.updateAncestors(flowJob, step, substep);
+                                                updateJobIdPromise = _this.updateJobId(job, step, substep);
                                             });
 
                                             // When job is complete, resolve with job and result.
-                                            job.on('complete', (result) => {
-                                                Promise.join(relateJobPromise, updateJobInMongoPromise)
+                                            flowJob.on('complete', (result) => {
+                                                Promise.join(updateAncestorsPromise, updateJobIdPromise)
                                                     .then(() => {
-                                                        _this.jobLogger('Job logic complete.', job.data._uuid, job.id);
-                                                        jobResolve([ job, (result ? result : null) ]);
+                                                        _this.flowLogger('Completed child flow duties.', flowJob.data._uuid, flowJob.id);
+                                                        flowResolve([ flowJob, (result ? result : null) ]);
                                                     })
-                                                    .catch((err) => jobReject(err))
+                                                    .catch((err) => flowReject(err))
                                                 ;
                                             });
 
                                             // Actually start this job inside Kue.
-                                            job.save(err => {
+                                            flowJob.save(err => {
                                                 if (err) {
                                                     Logger.error(err.stack);
                                                 }
@@ -312,18 +322,19 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     ;
                                 }
                                 catch (err) {
-                                    jobReject(err);
+                                    flowReject(err);
                                 }
                             });
                         });
                     });
+
                 })
             ;
-
-            return this;
+            return _this;
         }
 
-        updateJob(job, step, substep) {
+
+        updateJobId(flowJob, step, substep) {
             const _this = this;
 
             return new Promise((resolve, reject) => {
@@ -335,18 +346,18 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                 const updateTheJob = () => {
                     numTries += 1;
-                    _this.JobModel.findOneAndUpdate({ 'data._uuid': job.data._uuid }, { jobId: job.id }, /*{new: true}, */function(err, jobDoc) {
+                    _this.FlowModel.findOneAndUpdate({ _id: flowJob.data._uuid }, { jobId: flowJob.id }, /*{new: true}, */function(err, flowDoc) {
                         if (err && maxTries > 4) {
                             clearTheInterval();
-                            _this.jobLogger(`Error updating job in MongoDB with new job id: ${err}`, job.data._uuid, job.id);
+                            _this.flowLogger(`Error updating job in MongoDB with new job id: ${err}`, flowJob.data._uuid, flowJob.id);
                             Logger.error('Error updating job in MongoDB with new job id');
                             Logger.error(err.stack);
                             reject(err);
                         }
-                        else if (!jobDoc && maxTries > 4) {
+                        else if (!flowDoc && maxTries > 4) {
                             clearTheInterval();
-                            const errorMsg = `Error updating job in MongoDB with new job id: Could not find job UUID of ${job.data._uuid} in MongoDB`;
-                            _this.jobLogger(errorMsg, job.data._uuid, job.id);
+                            const errorMsg = `Error updating job in MongoDB with new job id: Could not find job UUID of ${flowJob.data._uuid} in MongoDB`;
+                            _this.flowLogger(errorMsg, flowJob.data._uuid, flowJob.id);
                             Logger.error(errorMsg);
                             reject(new Error(errorMsg));
                         }
@@ -361,148 +372,6 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
             });
         }
-
-        /**
-         *
-         * @param step
-         * @param flowType
-         * @param {object|function} [jobData]
-         * @returns {FlowController}
-         */
-        flow(step, flowType, jobData = {}) {
-
-            let _this = this;
-
-            Promise.all(_this.promised[ '0' ])
-                .then((promised) => {
-
-                    let substep;
-
-                    /* Determine Step/Substep */
-
-                    // If we already have substeps at this step, increase substeps by 1 and set substep to the result
-                    if (_this.substeps[ step ]) {
-                        _this.substeps[ step ] += 1;
-                        substep = _this.substeps[ step ];
-                    }
-
-                    // If no substeps at this step, set them to 1 and set substep to 1
-                    else {
-                        _this.substeps[ step ] = 1;
-                        substep = 1;
-                    }
-
-                    //let initialRelatedJobs = promised[ 0 ].relatedJobs;
-                    //const flowId = _.get(initialRelatedJobs, `${step}.${substep}.data._uuid`, null);
-
-
-                    //Logger.debug(`Step: ${step}, Substep: ${substep}`);
-
-                    /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
-
-                    // I never want to type job handler again...
-                    _this.jobHandlers.push(() => {
-
-                        // .handleJob() will eventually determine when and if to run this job based on step, substep,
-                        // and previous completion
-                        return _this.handleJob(step, substep, (currentRelatedJobs) => {
-                            return new Promise((jobResolve, jobReject) => {
-                                try {
-
-                                    /* Build data to attach to the Kue job's data. */
-
-                                    // Build finalJobData from either passed object or passed function.
-                                    let finalJobData;
-
-                                    if (_.isFunction(jobData)) {
-                                        finalJobData = jobData(currentRelatedJobs);
-                                    }
-                                    else if (_.isObject(jobData)) {
-                                        finalJobData = jobData;
-                                    }
-                                    else {
-                                        _this.jobLogger(`Step ${step} was a flow that was not passed either an object or function for it's job data.`);
-                                        Logger.error(`[FLOW][${_this.flowId}][STEP][${step}][SUBSTEP]${substep}] was passed a bad job data.`);
-                                        Logger.error(`Bad flow data: ${JSON.stringify(jobData)}`);
-                                        jobReject(`Bad flow data: ${JSON.stringify(jobData)}`);
-                                    }
-
-                                    // Attach step and substep information to the job.
-                                    finalJobData._step = step;
-                                    finalJobData._substep = substep;
-                                    finalJobData._flowType = flowType;
-
-                                    // UNLIKE IN .job(), reuse the previous flowId if there is one.
-                                    finalJobData._flowId = _.get(currentRelatedJobs, `${step}.${substep}.jobData._flowId`, null);
-
-                                    // Reinitialize flow with the correct steps/substeps taken.
-                                    finalJobData._stepsTaken = _.get(currentRelatedJobs, `${step}.${substep}._stepsTaken`, null);
-                                    finalJobData._substepsTaken = _.get(currentRelatedJobs, `${step}.${substep}._substepsTaken`, null);
-
-                                    // Attach past results to job's data before starting it, so users can
-                                    // access these.
-                                    finalJobData._relatedJobs = _.get(currentRelatedJobs, `${step - 1}`, {});
-
-                                    // Grab the previous step's results (if there are any)
-                                    let lastStepResult = {};
-
-                                    for (let key of Object.keys(finalJobData._relatedJobs)) {
-                                        lastStepResult[ `${key}` ] = finalJobData._relatedJobs[ key ].result;
-                                    }
-
-                                    finalJobData._lastStepResult = lastStepResult;
-
-
-                                    // Reuse the previous UUID if there is one
-                                    //finalJobData._uuid = jobUUID;
-                                    finalJobData._parentFlowId = _this.flowId;
-
-                                    /**
-                                     * Start the job.
-                                     */
-
-                                    startFlow(flowType, finalJobData, true)
-                                        .then(flowJob => {
-
-                                            // When job is enqueued into Kue, relate the job to this flow.
-                                            let relateJobPromise;
-                                            flowJob.on('enqueue', () => {
-
-                                                // TODO? Maybe have to also update flow's jobId lke in job function
-                                                relateJobPromise = _this.relateJob(flowJob, step, substep);
-                                            });
-
-                                            // When job is complete, resolve with job and result.
-                                            flowJob.on('complete', (result) => {
-                                                relateJobPromise
-                                                    .then(() => {
-                                                        jobResolve([ flowJob, (result ? result : null) ]);
-                                                    })
-                                                    .catch((err) => jobReject(err))
-                                                ;
-                                            });
-
-                                            // Actually start this job inside Kue.
-                                            flowJob.save(err => {
-                                                if (err) {
-                                                    Logger.error(err.stack);
-                                                }
-                                            });
-                                        })
-                                    ;
-                                }
-                                catch (err) {
-                                    jobReject(err);
-                                }
-                            });
-                        });
-                    });
-
-                })
-            ;
-            return _this;
-        }
-
 
         /*
          * the exec function
@@ -529,9 +398,9 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                 const promFunc = function() {
 
-                    let relatedJobs = _this.relatedJobs;
+                    let ancestors = _this.ancestors;
 
-                    return promReturningFunc(relatedJobs);
+                    return promReturningFunc(ancestors);
                 };
 
                 const stepStr = step.toString();
@@ -549,26 +418,26 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         }
 
         /**
-         * Handles storing promise returning functions for a job at correct step in Flow instance
-         * @param {number} step - The step the job was asked to run at by the user
-         * @param {number} substep - The substep that Flow assigned to this job
-         * @param {function} jobRunner - Function that will run the job
-         * @param {function} [restartJob] - TODO Optional function to be called if this job is being restarted
+         * Handles storing promise returning functions for a child flow at correct step in Flow instance
+         * @param {number} step - The step the flow was asked to run at by the user
+         * @param {number} substep - The substep that Flow assigned to this flow
+         * @param {function} flowRunner - Function that will run the flow
+         * @param {function} [restartFlow] - TODO Optional function to be called if this job is being restarted
          * @returns {bluebird|exports|module.exports}
          */
-        handleJob(step, substep, jobRunner, restartJob = (()=> Logger.debug(`${this.loggerPrefix} No restartJob() passed.`))) {
+        handleChild(step, substep, flowRunner, restartFlow = (()=> Logger.debug(`${this.loggerPrefix} No restartFlow() passed.`))) {
 
             let _this = this;
 
-            //Logger.debug(`[${_this.flowId}] Handling step ${step}, substep ${substep}`);
+            //Logger.debug(`[${_this.uuid}] Handling step ${step}, substep ${substep}`);
 
-            return new Promise((handleJobResolve, handleJobReject) => {
+            return new Promise((handleFlowResolve, handleFlowReject) => {
                 if (step < 1) {
-                    handleJobReject(new Error('Cannot use a step that is less than 1'));
+                    handleFlowReject(new Error('Cannot use a step that is less than 1'));
                 }
                 /**
                  * True if:
-                 * 1. Step is the current step being processed AND this substep has not already been completed
+                 * 1. Step is the current step being processed AND this substep has not already been isCompleted
                  * OR
                  * 2. Step is any step past the current step
                  */
@@ -579,21 +448,21 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                     let stepStr = step.toString();
 
                     /**
-                     * runJob is a function that when run will call the passed job's logic function (which is a
-                     * promise), then upon completion of that job will pass the job to .completeJob(), then will
+                     * runFlow is a function that when run will call the passed job's logic function (which is a
+                     * promise), then upon completion of that job will pass the job to .completeChild(), then will
                      * resolve.
                      *
-                     * Essentially runJob is the function that once called will...run the job.
+                     * Essentially runFlow is the function that once called will...run the job.
                      * @returns {bluebird|exports|module.exports}
                      */
-                    let runJob = (currentRelatedJobs) => {
+                    let runFlow = (currentAncestors) => {
                         return new Promise((resolve, reject) => {
                             // Run the job...
-                            jobRunner(currentRelatedJobs)
+                            flowRunner(currentAncestors)
 
                             // Complete the job...
                                 .spread((job, result) => {
-                                    return _this.completeJob(job, result);
+                                    return _this.completeChild(job, result);
                                 })
 
                                 // Resolve.
@@ -605,24 +474,24 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
                     // Add this job to the promisedArray, initialize if first job at this step
                     if (promised[ stepStr ]) {
-                        _this.promised[ stepStr ].push(runJob);
+                        _this.promised[ stepStr ].push(runFlow);
 
-                        //Logger.debug(`[${_this.flowId}] Added job for step: ${step}`);
-                        handleJobResolve();
+                        //Logger.debug(`[${_this.uuid}] Added job for step: ${step}`);
+                        handleFlowResolve();
                     }
                     else {
-                        //Logger.debug(`[${_this.flowId}] Added job for step: ${step}`);
-                        _this.promised[ stepStr ] = [ runJob ];
-                        handleJobResolve();
+                        //Logger.debug(`[${_this.uuid}] Added job for step: ${step}`);
+                        _this.promised[ stepStr ] = [ runFlow ];
+                        handleFlowResolve();
                     }
 
                 }
 
-                // Don't handle job, it was completed before
+                // Don't handle job, it was isCompleted before
                 else {
                     // Run the job's restart function
-                    restartJob();
-                    handleJobResolve();
+                    restartFlow();
+                    handleFlowResolve();
                 }
             });
         }
@@ -634,48 +503,48 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
          * @param {Number} substep - the substep this job is occurring on.
          * @returns {bluebird|exports|module.exports|Job}
          */
-        relateJob(job, step, substep) {
+        updateAncestors(job, step, substep) {
 
             let _this = this;
 
             return new Promise((resolve, reject) => {
-                // Push job on to the activeJobs stack
-                //Logger.error(')()()()(BEFOREEEEE RElating job here is activeJobs', _this.activeJobs);
+                // Push job on to the activeChildren stack
+                //Logger.error(')()()()(BEFOREEEEE RElating job here is activeChildren', _this.activeChildren);
                 //Logger.error(_this);
 
-                _this.activeJobs.push[ job ];
+                _this.activeChildren.push[ job ];
 
-                //Logger.error(')()()()(AFTER RElating job here is activeJobs', _this.activeJobs);
+                //Logger.error(')()()()(AFTER RElating job here is activeChildren', _this.activeChildren);
 
 
-                _this.FlowModel.findOneAndUpdate({ _id: _this.flowId }, {
+                _this.FlowModel.findOneAndUpdate({ _id: _this.uuid }, {
                     $set: {
-                        [`relatedJobs.${step}.${substep}`]: {
+                        [`ancestors.${step}.${substep}`]: {
                             data:   job.data,
                             result: null
                         }
                     }
                 }, { new: true }, (err, flowDoc) => {
                     if (err) {
-                        Logger.error(`Error updating relatedJobs: ${err.stack}`);
-                        Logger.debug(util.inspect(flowDoc, {depth: null, colors: true}));
+                        Logger.error(`Error updating ancestors: ${err.stack}`);
+                        Logger.debug(util.inspect(flowDoc, { depth: null, colors: true }));
                         reject(job);
                     }
 
-                    // If this job is part of a helper flow, update parent flows relatedJobs with this info
+                    // If this job is part of a helper flow, update parent flows ancestors with this info
                     else {
 
-                        _this.relatedJobs = flowDoc.relatedJobs;
+                        _this.ancestors = flowDoc.ancestors;
 
-                        if (_this.parentFlowId) {
+                        if (_this.isChild) {
 
-                            _this.FlowModel.findOneAndUpdate({ _id: _this.parentFlowId }, {
+                            _this.FlowModel.findOneAndUpdate({ _id: _this.parentUUID }, {
                                 $set: {
-                                    [`relatedJobs.${_this.data._step}.${_this.data._substep}.data._relatedJobs`]: flowDoc.relatedJobs
+                                    [`ancestors.${_this.data._step}.${_this.data._substep}.data._ancestors`]: flowDoc.ancestors
                                 }
                             }, { new: true, upsert: true }, (err, parentFlowDoc) => {
                                 if (err) {
-                                    Logger.error(`Error updating parent flow's relatedJobs: ${err}`);
+                                    Logger.error(`Error updating parent flow's ancestors: ${err}`);
                                     reject(job);
                                 }
                                 else {
@@ -695,7 +564,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         /**
          * Completes this Flow
          * 0. Waits for start() to finish, which includes any promises passed to start() by the user
-         * 1. Cleans up the relatedJobs that were not completed if this flow restarted otherwise is a noop
+         * 1. Cleans up the ancestors that were not completed if this flow restarted otherwise is a noop
          * 2. Initiates the jobHandler promises by calling all jobHandler functions (which return promises)
          * 3. Waits for all of the jobHandler promises to be done, that were just created.
          * 4. Then starts to run the steps of the Flow, one step at a time, using a recursive function that only calls
@@ -712,14 +581,14 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
 
             /**
              * Removes related jobs that were not completed before.  This is run inside of end() because jobs use their
-             * uncompleted related jobs to reuse their UUIDs and/or flowIds.
+             * uncompleted related jobs to reuse their UUIDs and/or uuids.
              * @returns {bluebird|exports|module.exports}
              */
-            function cleanupRelatedJobs() {
+            function cleanupAncestry() {
 
                 return new Promise((resolve, reject) => {
 
-                    _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
+                    _this.FlowModel.findById(_this.uuid, (err, flowDoc) => {
                         if (err) {
                             reject(err);
                         }
@@ -728,8 +597,8 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             // Flows to get
                             let subFlows = [];
 
-                            // Remove relatedJobs that were added but their step/substep never completed
-                            _this.relatedJobs = _(_this.relatedJobs)
+                            // Remove ancestors that were added but their step/substep never completed
+                            _this.ancestors = _(_this.ancestors)
                                 .pick(_.range(1, _this.stepsTaken + 2))
                                 .mapValues((substepsObj, step, obj) => {
                                     const stepNum = parseInt(step, 10);
@@ -740,7 +609,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                     else {
                                         _.forOwn(substepsObj, (flowData, substep) => {
                                             if (!_.get(flowData, '.data._uuid', false)) {
-                                                subFlows.push({ step, substep, flowId: flowData.data._flowId });
+                                                subFlows.push({ step, substep, uuid: flowData.data._uuid });
                                             }
                                         });
 
@@ -756,20 +625,20 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 .value()
                             ;
 
-                            const attachFlowProgress = ({ step, substep, flowId }) => {
+                            const attachFlowProgress = ({ step, substep, uuid }) => {
                                 return new Promise((resolve, reject) => {
-                                    _this.FlowModel.findOne(flowId, (err, doc) => {
+                                    _this.FlowModel.findOne(uuid, (err, doc) => {
                                         if (err) {
                                             Logger.error(err.stack);
                                             reject(err);
                                         }
                                         else {
 
-                                            if (!_this.relatedJobs[ step ]) _this.relatedJobs[ step ] = {};
+                                            if (!_this.ancestors[ step ]) _this.ancestors[ step ] = {};
 
-                                            _this.relatedJobs[step][substep] = doc;
+                                            _this.ancestors[ step ][ substep ] = doc;
 
-                                            resolve({step, substep, doc});
+                                            resolve({ step, substep, doc });
                                         }
                                     });
                                 });
@@ -778,7 +647,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             Promise
                                 .all(subFlows.map(attachFlowProgress))
                                 .then((docInfos) => {
-                                    flowDoc.relatedJobs = _this.relatedJobs;
+                                    flowDoc.ancestors = _this.ancestors;
                                     flowDoc.save((err) => {
                                         if (err) {
                                             reject(err);
@@ -805,7 +674,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             function setStepsTakenToOne() {
 
                 return new Promise((resolve, reject) => {
-                    _this.FlowModel.findById(_this.flowId, (err, flowDoc) => {
+                    _this.FlowModel.findById(_this.uuid, (err, flowDoc) => {
                         if (err) {
                             Logger.error(err.stack);
 
@@ -839,14 +708,14 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                 Promise.all(_this.promised[ '0' ])
 
                     // 1.
-                    .then(cleanupRelatedJobs)
+                    .then(cleanupAncestry)
 
                     // Set stepsTaken to 0 if they were -1 (initialization is complete)
                     .then(setStepsTakenToOne)
                     .then(() => {
 
                         // 2.
-                        let jobHandlerPromises = _this.jobHandlers.map((promiseReturner) => promiseReturner());
+                        let jobHandlerPromises = _this.flowHandlers.map((promiseReturner) => promiseReturner());
 
                         // Find largest step number attached to _this.promised
                         const lastStep = Math.max(...Object.keys(_this.promised).map(string => parseInt(string, 10)));
@@ -854,7 +723,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                         // 3.
                         Promise.all(jobHandlerPromises)
                             .then(() => {
-                                //Logger.debug(`[${_this.flowId}] STARTING JOBS!`);
+                                //Logger.debug(`[${_this.uuid}] STARTING JOBS!`);
 
                                 // Start running steps...
                                 unpackPromises(1);
@@ -880,7 +749,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                             let promiseReturners = _this.promised[ stepKey ];
 
                             // Pass current related jobs to jobs/flows
-                            let currentRelatedJobs = _this.relatedJobs;
+                            let currentAncestors = _this.ancestors;
 
                             if (promiseReturners) {
                                 //Logger.debug(`PROM RETURNERS ${step}: ${promiseReturners}`);
@@ -888,7 +757,7 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
                                 // Initiate promises by calling the promise returning functions inside
                                 // this.promised[step] = [func, ..., func]
                                 let promiseList = promiseReturners.map((promiseReturner) => {
-                                    return promiseReturner(currentRelatedJobs);
+                                    return promiseReturner(currentAncestors);
                                 });
 
                                 // Check if this flow is being cancelled and cancel all the promises that were just
@@ -948,20 +817,20 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             let _this = this;
 
             return new Promise((resolve, reject) => {
-                _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                        completed: true,
-                        result:    result
+                _this.FlowModel.findByIdAndUpdate(_this.uuid, {
+                        isCompleted: true,
+                        result:      result
                     }, { new: true })
                     .then((flowDoc, err) => {
                         if (err) {
-                            Logger.error(`[${_this.kueJob.type}][${_this.flowId}] Error updating complete flow in MongoDB. \n
+                            Logger.error(`[${_this.kueJob.type}][${_this.uuid}] Error updating complete flow in MongoDB. \n
                                         $set complete => true \n\n
                                         $set result => ${JSON.stringify(result)}`);
-                            Logger.error(`[ ${_this.flowId} ] ${err.stack}`);
+                            Logger.error(`[ ${_this.uuid} ] ${err.stack}`);
                             reject(err);
                         }
                         else {
-                            _this.completed = true;
+                            _this.isCompleted = true;
                             resolve(result);
                         }
                     })
@@ -972,101 +841,55 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
         /**
          * Increments the substeps taken by the Flow on the instance and in Mongo,
          * sets the Job record in mongo as complete,
-         * and adds the job's results to the Flow instance, Flow mongodb record, and Job mongodb record.
+         * and adds the flowJob's results to the Flow instance, Flow mongodb record, and Job mongodb record.
          * @returns {bluebird|exports|module.exports|Job|null}
          */
-        completeJob(job, jobResult) {
+        completeChild(flowJob, jobResult) {
             let _this = this;
             return new Promise((resolve, reject) => {
-                if (job) {
+                if (flowJob) {
                     // Create field to update
-                    const relatedJobResultField = `relatedJobs.${job.data._step}.${job.data._substep}.result`;
+                    const relatedJobResultField = `ancestors.${flowJob.data._step}.${flowJob.data._substep}.result`;
 
                     // Update instance with this result
                     setPath(_this, relatedJobResultField, jobResult);
 
                     // Find this Flow's doc in Mongo and update the substeps taken
-                    _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                            $addToSet: { substepsTaken: job.data._substep },
+                    _this.FlowModel.findByIdAndUpdate(_this.uuid, {
+                            $addToSet: { substepsTaken: flowJob.data._substep },
                             $set:      { [relatedJobResultField]: jobResult }
                         }, { new: true })
                         .then((flowDoc, err) => {
                             if (err) {
-                                Logger.error(`[${_this.flowId}] Error incrementing Flow step.`);
+                                Logger.error(`[${_this.uuid}] Error incrementing Flow step.`);
                                 reject(err);
                             }
                             else {
 
-                                // Remove job from activeJobs
-                                _this.activeJobs = _.remove(_this.activeJobs, (activeJob) => {
-                                    return activeJob.id === job.id;
+                                // Remove flowJob from activeChildren
+                                _this.activeChildren = _.remove(_this.activeChildren, (activeJob) => {
+                                    return activeJob.id === flowJob.id;
                                 });
 
                                 // Update the substeps taken on this flow instance
                                 _this.substepsTaken = flowDoc.substepsTaken;
 
-                                if (job.data._uuid) {
-                                    // Update the Job in Mongo to be complete.
-                                    _this.JobModel.findByIdAndUpdate(job.data._uuid, {
-                                        completed: true,
-                                        result:    jobResult
-                                    }, { new: true }, (err, jobDoc) => {
-                                        if (err) {
-                                            reject(err);
-                                        }
-                                        else {
-                                            _this.jobLogger('Job cleanup complete.', job.data._uuid, job.id);
-                                            resolve(job);
-                                        }
-                                    });
-                                }
-                                else {
-                                    resolve(job);
-                                }
+                                resolve(flowJob);
                             }
                         })
                     ;
-                } else {
+                }
+                else {
+
                     resolve(null);
                 }
             });
         }
 
         /**
-         * This increments the stepsTaken of this Flow on both the mongo doc and flow instance,
-         * also resets the substepsTaken to [] on both the Mongo doc and the flow instance as well.
-         * @returns {bluebird|exports|module.exports}
-         */
-        completeStep(step) {
-            let _this = this;
-
-            return new Promise((resolve, reject) => {
-
-                // Update the mongo doc's stepsTaken and substepsTaken
-                _this.FlowModel.findByIdAndUpdate(_this.flowId, {
-                        stepsTaken:    step,
-                        substepsTaken: []
-                    }, { new: true })
-                    .then((flowDoc, err) => {
-                        if (err) {
-                            Logger.error(`[${_this.flowId}] Error incrementing Flow step.`);
-                            reject(err);
-                        }
-                        else {
-                            // Update the flow instance
-                            _this.stepsTaken = step;
-                            _this.substepsTaken = [];
-                            resolve();
-                        }
-                    })
-                ;
-            });
-        }
-
-        /**
          * Cancels this flow, cancels all currently running jobs related to this Flow.
          * @params {object} [cancellationData] - TODO what should be here?
-         * @returns {bluebird|exports|module.exports|FlowController}
+         * @returns {Promise.<FlowController>}
          */
         cancel(cancellationData) {
             const _this = this;
@@ -1074,39 +897,32 @@ export default function flowClassBuilder(queue, mongoCon, FloughInstance, startF
             return Promise.all(_this.promised[ '0' ]).then(() => {
 
                 return new Promise((resolve, reject) => {
-                    //Logger.debug(`activeJobs:`);
-                    //Logger.debug(_this.activeJobs);
+                    //Logger.debug(`activeChildren:`);
+                    //Logger.debug(_this.activeChildren);
 
                     _this.isCancelled = true;
 
                     const cancelFlowJob = () => {
                         _this.kueJob.log('Flow was cancelled.');
-                        _this.jobLogger('Flow was cancelled', _this.flowId, _this.kueJob.id);
+                        _this.flowLogger('Flow was cancelled', _this.uuid, _this.kueJob.id);
                         _this.kueJob.failed();
                     };
 
-                    _this.activeJobs.forEach((job) => {
+                    _this.activeChildren.forEach((job) => {
 
-                        if (job.data._flowId !== 'NoFlow') {
-                            FloughInstance.emit(`CancelFlow:${job.data._flowId}`, cancellationData);
-                        }
-                        else if (job.data._flowId) {
-                            FloughInstance.emit(`CancelJob:${job.data._uuid}`, cancellationData);
-                        }
-                        else {
-                            Logger.error('ACTIVE JOB HAD NO FLOWID, DON"T KNOW HOW TO CANCEL IT');
-                        }
+                        FloughInstance.emit(`CancelFlow:${job.data._uuid}`, cancellationData);
+
                     });
 
-                    _this.FlowModel.findByIdAndUpdate(_this.flowId, { isCancelled: true }, { new: true }, (err, flowDoc) => {
+                    _this.FlowModel.findByIdAndUpdate(_this.uuid, { isCancelled: true }, { new: true }, (err, flowDoc) => {
                         if (err) {
-                            Logger.error(`Error setting flow as cancelled in MongoDB. Flow ${_this.flowId} still has 'isCancelled' as false.`);
+                            Logger.error(`Error setting flow as cancelled in MongoDB. Flow ${_this.uuid} still has 'isCancelled' as false.`);
                             Logger.error(err.stack);
                             cancelFlowJob();
                             reject(err);
                         }
                         else if (!flowDoc) {
-                            const errorMsg = `FlowId of ${_this.flowId} is not in MongoDB and could not be set to cancelled.`;
+                            const errorMsg = `UUID of ${_this.uuid} is not in MongoDB and could not be set to cancelled.`;
                             Logger.error(errorMsg);
                             cancelFlowJob();
                             reject(errorMsg);

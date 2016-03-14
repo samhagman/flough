@@ -107,7 +107,7 @@ When registering a job you get three parameters injected into your function: `jo
 
 `job` is a slightly modified [Kue](https://github.com/Automattic/kue) job and still retains all functions available to that object; look at the [Kue](https://github.com/Automattic/kue) documentation for more about job events, job progress, job priorities, etc.
 
-The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the [`job.jobLogger()`](https://github.com/samhagman/flough#job-logger) function.
+The big differences are the automatic injection of several fields onto the `job.data` object and the addition of the [`job.flowLogger()`](https://github.com/samhagman/flough#job-logger) function.
 
 `done` is a function that is called to let Flough know that your job has completed.  Any JSON-_able_ object passed to this function will
 be set as the result of this job in MongoDB and also within a special related jobs property that is usable when creating [flows](https://github.com/samhagman/flough#flows).
@@ -167,8 +167,8 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
-        .job(2, 'tweet_something', function(relatedJobs) {
-            return { handle: '@hagmansam', message: relatedJobs['1']['1'].data.result.html }
+        .job(2, 'tweet_something', function(ancestors) {
+            return { handle: '@hagmansam', message: ancestors['1']['1'].data.result.html }
         })
         .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
         .end()
@@ -192,13 +192,13 @@ Several small things to note about this flow:
 - Because `.end()` returns a promise, `.catch()` is also callable off of it; the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
 
-Now notice that job 2, `'tweet_something'`, took a function as its second argument where the job data object usually goes.  This example shows how by passing a function you get access to the `relatedJobs` object which contains information about all previous jobs that have run.  This function must return an object which is used as the final data object for this job.
+Now notice that job 2, `'tweet_something'`, took a function as its second argument where the job data object usually goes.  This example shows how by passing a function you get access to the `ancestors` object which contains information about all previous jobs that have run.  This function must return an object which is used as the final data object for this job.
 
-You probably also noticed this weird-looking piece of code: `relatedJobs['1']['1'].data.result.html`.  Why am I storing the related jobs this way?  I'll explain.
+You probably also noticed this weird-looking piece of code: `ancestors['1']['1'].data.result.html`.  Why am I storing the related jobs this way?  I'll explain.
   
-Each `.job` and `.flow` call take a step number as the leading argument, which tells Flough in what order the jobs should run.  Multiple jobs can share the same step number ([substeps](https://github.com/samhagman/flough#substeps)), which means that `relatedJobs['1']` would be ambiguous if that step contained [substeps](https://github.com/samhagman/flough#substeps).  So jobs are given their own substep number (even if their step contains no other jobs) which is based upon the order in which they were called.  Since in the code above there are no other substeps for step 1 then `'get_website_html'` was given a substep number of 1 which results in a final path of `relatedJobs['1']['1']`.
+Each `.job` and `.flow` call take a step number as the leading argument, which tells Flough in what order the jobs should run.  Multiple jobs can share the same step number ([substeps](https://github.com/samhagman/flough#substeps)), which means that `ancestors['1']` would be ambiguous if that step contained [substeps](https://github.com/samhagman/flough#substeps).  So jobs are given their own substep number (even if their step contains no other jobs) which is based upon the order in which they were called.  Since in the code above there are no other substeps for step 1 then `'get_website_html'` was given a substep number of 1 which results in a final path of `ancestors['1']['1']`.
 
-Yes, accessing relatedJobs like this is a pain because I am using numbers as keys in a JavaScript object.  But hopefully you see that storing them like this is a good conceptual model for how Flough is running your jobs.  I will also make the suggestion of using the fantastic [lodash library](https://lodash.com/) and their [`get`](https://lodash.com/docs#get) method.  This allows you to define the path as a string `_.get(relatedJobs, '1.1.data.result.html', null)` and also give it a default return value.
+Yes, accessing ancestors like this is a pain because I am using numbers as keys in a JavaScript object.  But hopefully you see that storing them like this is a good conceptual model for how Flough is running your jobs.  I will also make the suggestion of using the fantastic [lodash library](https://lodash.com/) and their [`get`](https://lodash.com/docs#get) method.  This allows you to define the path as a string `_.get(ancestors, '1.1.data.result.html', null)` and also give it a default return value.
 
 
 Here is the full code of that example:
@@ -243,8 +243,8 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
-        .job(2, 'tweet_something', function(relatedJobs) {
-            return { handle: '@hagmansam', message: relatedJobs['1']['1'].data.result.html }
+        .job(2, 'tweet_something', function(ancestors) {
+            return { handle: '@hagmansam', message: ancestors['1']['1'].data.result.html }
         })
         .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
         .end()
@@ -264,7 +264,7 @@ Flough.startFlow('get_html_and_tweet_it', { url: 'samhagman.com' }).then(functio
 
 ### execF()
 
-The `execF(Function([relatedJobs]))` function does what it says, it executes an arbitrary function.  Sometimes you don't want to go through all the trouble of registering a job or flow for something simple (and/or non-reusable) you want to do between two steps.  The value you resolve in the promise is used as the result of this "job".  **The function must return a Promise.** I recommend [Bluebird](http://bluebirdjs.com/docs/getting-started.html).
+The `execF(Function([ancestors]))` function does what it says, it executes an arbitrary function.  Sometimes you don't want to go through all the trouble of registering a job or flow for something simple (and/or non-reusable) you want to do between two steps.  The value you resolve in the promise is used as the result of this "job".  **The function must return a Promise.** I recommend [Bluebird](http://bluebirdjs.com/docs/getting-started.html).
  
  Here is an example of `execF()` using our previous flow example:
 
@@ -274,11 +274,11 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
         .job(2, 'tweet_something', { handle: '@hagmansam' })
-        .execF(2, function(relatedJobs) {
+        .execF(2, function(ancestors) {
             return new Promise((resolve, reject) => {
             
                 // If step 1, substep 1's result has an html field equal to '<h1> My Site </h1>' do nothing
-                if (relatedJobs['1']['1'].data.html === '<h1> My Site </h1>') {
+                if (ancestors['1']['1'].data.html === '<h1> My Site </h1>') {
                     resolve();  // Could return something in the resolve if you wanted 
                 }
                 else { // Otherwise cancel the flow
@@ -352,7 +352,7 @@ The `Flough` instance, once initialized, will emit two categories of events:
 
 2. `Flough` will also emit a bunch of special events that allow you to listen for specific jobs, specific types of jobs, or specific flows:
 
-These special events are emitted in the following format: `some_identifier:some_event` where `some_identifier` can be `job.data._uuid`, `job.type` or `job.data._flowId` and `some_event` can be one of [Kue's job events](https://github.com/Automattic/kue#job-events).
+These special events are emitted in the following format: `some_identifier:some_event` where `some_identifier` can be `job.data._uuid`, `job.type` or `job.data._uuid` and `some_event` can be one of [Kue's job events](https://github.com/Automattic/kue#job-events).
 
 
 ### Flough Searching
@@ -384,9 +384,9 @@ To perform a search where you want all jobs that **contain at least one of the s
 `Flough.search(string, true)`
 This will use the `.type('or')` functionality of [reds](https://github.com/tj/reds).
 
-- `Flough.searchJobs({ [jobIds], [jobUUIDs], [jobTypes], [completed = false], [_activeJobs = true]})`
+- `Flough.searchJobs({ [jobIds], [jobUUIDs], [types], [completed = false], [_activeJobs = true]})`
 
-This function will search the MongoDB collection directly.  It takes an object with several different possible fields that all search in an additive way (eg. jobIds && jobTypes).
+This function will search the MongoDB collection directly.  It takes an object with several different possible fields that all search in an additive way (eg. jobIds && types).
 
 Additionally there are the `completed` and `_activeJobs` fields which are set to default settings which return only completed jobs that are active in Kue.
 
@@ -397,7 +397,7 @@ This function will also search MongoDB and only accepts a single parameter which
 
 ### Job Logger
 
-Signature: `job.jobLogger('My job log message', job.data._uuid, [job.id])`
+Signature: `job.flowLogger('My job log message', job.data._uuid, [job.id])`
 
 The job logger is similar to [Kue's](https://github.com/Automattic/kue) `job.log('My message')` but it instead will persist logs to both redis and MongoDB.  This logger is attached to both the `job` and `flow` objects.  The first parameter is your message, the second parameter is the UUID of the job and the third is an optional parameter that takes the exact `job.id` of the job.  This third parameter can be useful when a job can not be found in MongoDB yet at the time of you calling this function.
 
