@@ -5,13 +5,13 @@
  * @param {string} str
  * @param {*} val
  */
-export default function setPath(obj, str, val) {
-    const strPrts = str.split('.');
+function setPath(obj, str, val) {
+    const paths = str.split('.');
 
     let curPath = obj;
-    strPrts.forEach(function(k, i) {
+    paths.forEach(function(k, i) {
         if (!curPath[ k.toString() ]) {
-            if (i + 1 === strPrts.length) {
+            if (i + 1 === paths.length) {
                 curPath[ k.toString() ] = val;
             } else {
                 curPath[ k.toString() ] = {};
@@ -23,3 +23,5 @@ export default function setPath(obj, str, val) {
 
     return obj;
 }
+
+export default setPath;
