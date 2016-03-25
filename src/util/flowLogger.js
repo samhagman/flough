@@ -6,7 +6,7 @@ const kue = require('kue');
  * @param {object} Logger - Internal Flough Logger
  * @returns {flowLogger}
  */
-export default function flowLoggerFactory(mongoCon, Logger) {
+function flowLoggerFactory(mongoCon, Logger) {
 
     // Get models from Mongoose
     const FlowModel = mongoCon.model('flow');
@@ -15,7 +15,7 @@ export default function flowLoggerFactory(mongoCon, Logger) {
      * Logs messages to both the redis job and optionally the persistent storage's job
      * @param {string} msgString - The message to be logged
      * @param {string} UUID - The job's UUID the message belongs to.
-     * @param {Number} [jobId] - Optionally pass a Kue jobId to force flowLogger to use.
+     * @param {number} [jobId] - Optionally pass a Kue jobId to force flowLogger to use.
      */
     function flowLogger(msgString, UUID, jobId) {
 
@@ -80,7 +80,7 @@ export default function flowLoggerFactory(mongoCon, Logger) {
         }
     }
 
-
-
     return flowLogger;
 }
+
+export default flowLoggerFactory;
