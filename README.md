@@ -71,7 +71,7 @@ Before beginning to build Jobs and Flows we need to initialize a Flough instance
     });
 ```
 
-Once you have a `Flough` instance created you can begin building!  Checkout [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1) for more initialization options.
+Once you have a `Flough` instance created you can beginChain building!  Checkout [Initializing A Flough Instance](https://github.com/samhagman/flough#initializing-a-flough-instance-1) for more initialization options.
 
 ### Jobs
 
@@ -157,13 +157,13 @@ With that out of the way...
 A flow is started like so:
 
 ```node
-Flough.startFlow('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
+Flough.start('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
 ```
 
 Which will start the flow with a type of `get_html_and_tweet_it` that was registered like so:
 
 ```node
-Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
+Flough.register('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
@@ -171,7 +171,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
             return { handle: '@hagmansam', message: ancestors['1']['1'].data.result.html }
         })
         .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
-        .end()
+        .endChain()
         .then(function(flow) {
             done();
         })
@@ -183,13 +183,13 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 ```
 Several small things to note about this flow:
 
-- You can pass options to a flow as the second parameter to `.startFlow()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
+- You can pass options to a flow as the second parameter to `.start()` which are accessible inside the flow at `flow.data` very similarly to `job.data`.
 
-- The injected `flow` must be initialized with `.start()` and then ended with a `.end()` after all `.job()`s,  `.flow()`s, and `.execF()`s have been called on the flow.
+- The injected `flow` must be initialized with `.start()` and then ended with a `.endChain()` after all `.job()`s,  `.flow()`s, and `.execF()`s have been called on the flow.
 
-- `.end()` returns a promise which will resolve when all the jobs have completed and injects the flow instance into the callback it takes as its only argument.
+- `.endChain()` returns a promise which will resolve when all the jobs have completed and injects the flow instance into the callback it takes as its only argument.
 
-- Because `.end()` returns a promise, `.catch()` is also callable off of it; the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
+- Because `.endChain()` returns a promise, `.catch()` is also callable off of it; the error that appears here will be _any_ error that is not handled in the jobs or was explicitly returned by calling `error()` inside of a job.
 
 
 Now notice that job 2, `'tweet_something'`, took a function as its second argument where the job data object usually goes.  This example shows how by passing a function you get access to the `ancestors` object which contains information about all previous jobs that have run.  This function must return an object which is used as the final data object for this job.
@@ -239,7 +239,7 @@ Flough.registerJob('tweet_something', function(job, done, error) {
 });
 
 // Register the Flow
-Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
+Flough.register('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
@@ -247,7 +247,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
             return { handle: '@hagmansam', message: ancestors['1']['1'].data.result.html }
         })
         .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
-        .end()
+        .endChain()
         .then(function(flow) {
             done();
         })
@@ -258,7 +258,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
 });
 
 // Run the Flow
-Flough.startFlow('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
+Flough.start('get_html_and_tweet_it', { url: 'samhagman.com' }).then(function(flowJob) { flowJob.save(); }));
 
 ```
 
@@ -269,7 +269,7 @@ The `execF(Function([ancestors]))` function does what it says, it executes an ar
  Here is an example of `execF()` using our previous flow example:
 
 ```node
-Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
+Flough.register('get_html_and_tweet_it', function(flow, done, error) {
 
     flow.start()
         .job(1, 'get_website_html', { url: flow.data.url })
@@ -288,7 +288,7 @@ Flough.registerFlow('get_html_and_tweet_it', function(flow, done, error) {
             });
         })
         .flow(3, 'star_flough_repo', { repo: 'samhagman/flough'})
-        .end()
+        .endChain()
         .then(function(flow) {
             done();
         })
@@ -310,7 +310,7 @@ flow.start()
     .job(1, 'send_an_email)
     .job(2, 'write_a_file')
     .flow(3, 'restart_a_server')
-    .end();
+    .endChain();
 ```
 _Note: `.job()` and `.startJob()` do not require a data object to be passed in._
 
@@ -459,7 +459,7 @@ Some things to note:
 
 ### Flow/Job Options Object
 
-This is the optional second argument that can be passed to either `.registerJob` or `.registerFlow` and is how a user can tweak how Flough will handle a job or flow.  Currently there is only one option available for use, but there are several more options I can see being useful in the future.
+This is the optional second argument that can be passed to either `.registerJob` or `.register` and is how a user can tweak how Flough will handle a job or flow.  Currently there is only one option available for use, but there are several more options I can see being useful in the future.
 
 For now though, that one option you can use is `noSave` which can be utilized like so:
 
@@ -548,7 +548,7 @@ FloughBuilder.init(floughOptions)
     .then(Flough => {
     
         // Flough.registerJob(...)
-        // Flough.registerFlow(...)
+        // Flough.register(...)
         // Flough.searchJobs(...)
         // Flough.searchFlows(...)
         // etc...
