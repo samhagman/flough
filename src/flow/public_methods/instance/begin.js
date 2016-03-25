@@ -3,13 +3,14 @@ const _ = require('lodash');
 
 /**
  * Initializes the Flow, needed to finish construction of Flow instance
- * @method Flow.begin
+ * @method Flow#beginChain
+ * @public
  * @this Flow
  * @param {object} _d - Private Flow data
- * @param {Promise[]} [promiseArray] - Array of promises to resolve before first job of flow will run, not necessarily before the .begin() will run.
+ * @param {Promise[]} [promiseArray=[]] - Array of promises to resolve before first job of flow will run, not necessarily before the .beginChain() will run.
  * @returns {Flow}
  */
-export default function begin(_d, promiseArray = []) {
+function begin(_d, promiseArray = []) {
 
     const _this = this;
     const Logger = _d.Logger;
@@ -106,3 +107,5 @@ export default function begin(_d, promiseArray = []) {
 
     return _this;
 }
+
+export default begin;

@@ -10,21 +10,22 @@ const _ = require('lodash');
  * 4. Then starts to run the steps of the Flow, one step at a time, using a recursive function that only calls
  * itself once all the promises it initiated at a step are complete.
  *
- * Once end resolves, the flow function using this flow will call `done(result)` which will pass the result back
+ * Once endChain resolves, the flow function using this flow will call `done(result)` which will pass the result back
  * to the flowAPI.js file which will then call `.setFlowResult` on an instance of this class which will both set
  * this flow as complete and update the result the user passed inside of Mongo.
- * @method Flow.end
+ * @method Flow#endChain
+ * @public
  * @this Flow
  * @param {object} _d - Private Flow data
  * @returns {Promise.<Flow>}
  */
-export default function end(_d) {
+function end(_d) {
 
-    let _this = this;
+    const _this = this;
     const Logger = _d.Logger;
 
     /**
-     * Removes related jobs that were not completed before.  This is run inside of end() because jobs use their
+     * Removes related jobs that were not completed before.  This is run inside of endChain() because jobs use their
      * uncompleted related jobs to reuse their UUIDs and/or uuids.
      * @returns {bluebird|exports|module.exports}
      */
@@ -90,7 +91,7 @@ export default function end(_d) {
 
                     Promise
                         .all(subFlows.map(attachFlowProgress))
-                        .then((docInfos) => {
+                        .then(docInfos => {
                             flowDoc.ancestors = _this.ancestors;
                             flowDoc.save((err) => {
                                 if (err) {
@@ -184,7 +185,7 @@ export default function end(_d) {
                  * - Finish if no more steps.
                  * OR
                  * - If flow was cancelled cancel all promised promises and stop recursion
-                 * @param {Number} step
+                 * @param {number} step
                  */
                 function unpackPromises(step) {
                     let stepKey = step.toString();
@@ -250,3 +251,5 @@ export default function end(_d) {
         ;
     });
 }
+
+export default end;

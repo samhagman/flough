@@ -3,15 +3,16 @@ const _ = require('lodash');
 
 /**
  * Adds a child flow to the flow chain
- * @method Flow.flow
+ * @method Flow#flow
+ * @public
  * @this Flow
  * @param {object} _d - Private Flow data
  * @param {number} step - The step in the chain to add this flow to
  * @param {string} type - The type of flow to add
- * @param {object|function} [flowData]
+ * @param {object|function} [flowData={}
  * @returns {Flow}
  */
-export default function flow(_d, step, type, flowData = {}) {
+function flow(_d, step, type, flowData = {}) {
 
     const _this = this;
     const Logger = _d.Logger;
@@ -38,7 +39,7 @@ export default function flow(_d, step, type, flowData = {}) {
 
             //Logger.debug(`Step: ${step}, Substep: ${substep}`);
 
-            /* Push job handler for this function into the job handler's array to be eventually handled by .end(). */
+            /* Push job handler for this function into the job handler's array to be eventually handled by .endChain(). */
 
             // I never want to type job handler again...
             _this.flowHandlers.push(() => {
@@ -109,8 +110,8 @@ export default function flow(_d, step, type, flowData = {}) {
                                     flowJob.on('enqueue', () => {
 
                                         // TODO? Maybe have to also update flow's jobId lke in job function
-                                        updateAncestorsPromise = _d.updateAncestors(flowInstance, flowJob, step, substep);
-                                        updateJobIdPromise = _d.updateJobId(flowInstance, job, step, substep);
+                                        updateAncestorsPromise = _d.updateAncestors(_this, flowJob, step, substep);
+                                        updateJobIdPromise = _d.updateJobId(_this, flowJob);
                                     });
 
                                     // When job is complete, resolve with job and result.
@@ -145,3 +146,5 @@ export default function flow(_d, step, type, flowData = {}) {
 
     return _this;
 }
+
+export default flow;

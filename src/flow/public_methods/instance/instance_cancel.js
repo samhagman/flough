@@ -2,13 +2,14 @@ const Promise = require('bluebird');
 
 /**
  * Cancels this flow, cancels all currently running jobs related to this Flow.
- * @method Flow.cancel
+ * @method Flow#cancel
+ * @public
  * @this Flow
  * @param {object} _d - Private Flow data
  * @param {object} [cancellationData] - Data to be sent along with the cancellation event
  * @returns {Promise.<Flow>}
  */
-export default function cancel(_d, cancellationData) {
+function cancel(_d, cancellationData) {
 
     return Promise.all(this.promised[ '0' ]).then(() => {
 
@@ -56,3 +57,5 @@ export default function cancel(_d, cancellationData) {
 
     });
 }
+
+export default cancel;
