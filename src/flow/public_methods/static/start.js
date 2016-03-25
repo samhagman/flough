@@ -5,18 +5,18 @@ const ObjectId = require('mongoose').Types.ObjectId;
 const Promise = require('bluebird');
 
 /**
- * @this Flow
- * @param {object} privateData - Object holding private Flow class data
- * @param flowName
- * @param givenData
- * @param isChild
- * @returns {Promise}
+ * Start up a type of Flow instance using the given data
+ * @method Flow.start
+ * @public
+ * @param {object} _d - Object holding private Flow class data
+ * @param {string} flowType - The type of flow to start
+ * @param {object} [givenData={}] - The data given to initialize the flow
+ * @param {boolean} [isChild=false] - Whether or not this is the child of a parent flow
+ * @returns {Promise.<Flow>}
  */
-export default function startFlow(privateData, flowName, givenData = {}, isChild = false) {
+function start(_d, flowType, givenData = {}, isChild = false) {
 
-
-    const Flow = privateData.Flow;
-    const _d = privateData;
+    const Flow = _d.Flow;
 
     const Logger = _d.Logger;
 
@@ -43,17 +43,17 @@ export default function startFlow(privateData, flowName, givenData = {}, isChild
 
     // If no type, set it to the flow's name that was passed in
     if (!flowData._type) {
-        flowData._type = flowName;
+        flowData._type = flowType;
     }
 
     // Set the isChild property
     flowData._isChild = isChild;
 
     // Get the dynamicPropertyFunc that was registered to this flow type
-    const dynamicPropFunc = _d.dynamicPropFuncs[ flowName ];
+    const dynamicPropFunc = _d.dynamicPropFuncs[ flowType ];
 
     // Get the job options that were registered to this flow type
-    const jobOptions = _d.jobOptions[ flowName ];
+    const jobOptions = _d.jobOptions[ flowType ];
 
     // Get the field names that should not be saved into Kue (and stringified)
     const noSaveFieldNames = jobOptions.noSave || [];
@@ -63,7 +63,7 @@ export default function startFlow(privateData, flowName, givenData = {}, isChild
 
     if (!_.isFunction(dynamicPropFunc)) {
 
-        Logger.error(`Dynamic property passed was not a function for job type ${flowName}`);
+        Logger.error(`Dynamic property passed was not a function for job type ${flowType}`);
         Logger.error(util.inspect(dynamicPropFunc));
         return Promise.reject(new Error('Dynamic property passed was not a function.'));
 
@@ -74,19 +74,27 @@ export default function startFlow(privateData, flowName, givenData = {}, isChild
     let mergedProperties = _.merge(newData, dynamicProperties);
 
     //Logger.info(`${_this.loggerPrefix} Creating new Flow in Mongo...`);
-    return persistFlow(privateData, mergedProperties)
+    return persistFlow(_d, mergedProperties)
         .then(finalProps => {
 
-            // Add the fields that aren't going into Kue to a temp storage spot, to be attached back later
-            _d.toBeAttached[finalProps._uuid] = _.pick(flowData, noSaveFieldNames);
+            // Get the kueJob for this flow
+            const kueJob = _d.queue.create(`flow:${flowType}`, finalProps);
 
-            return Promise.resolve(_d.queue.create(`flow:${flowName}`, finalProps));
+            // Setup Flow Controller
+            const flowInstance = new _d.Flow(kueJob);
+
+            // Attach data that wasn't saved to Kue/MongoDB
+            flowInstance.data = _.merge(flowInstance.data, _.pick(flowData, noSaveFieldNames));
+
+            // Save the instance of this flow so the register function can inject this instance that was created here
+            _d.flowInstances.set(finalProps._uuid, flowInstance);
+
+            return Promise.resolve(flowInstance);
         })
         .catch(err => {
             Logger.error('Error starting flow: \n' + err.stack);
             return Promise.reject(err);
         });
-
 }
 
 
@@ -195,7 +203,8 @@ function persistFlow(_d, mergedProperties) {
     }
 }
 
-
 function rollBackPersist() {
 
 }
+
+export default start;

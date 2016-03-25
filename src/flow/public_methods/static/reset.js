@@ -3,12 +3,15 @@ const kue = require('kue');
 const Promise = require('bluebird');
 
 /**
+ * Reset an active Flow instance back to a certain step
+ * @method Flow.reset
+ * @public
  * @param {object} _d - Object holding private Flow class data
  * @param {string} UUID - The UUID of a flow
  * @param {number} stepNumber - The step number to reset to
- * @returns {Promise.<TResult>}
+ * @returns {Promise}
  */
-export default function resetFlow(_d, UUID, stepNumber) {
+function reset(_d, UUID, stepNumber) {
 
     return _d.Flow.status(UUID)
         .then(flowData => {
@@ -43,7 +46,8 @@ export default function resetFlow(_d, UUID, stepNumber) {
             });
         })
         .catch(err => {
-            this.Logger.error(`Error resetting flow ${UUID}: \n ${err.stack}`);
-        })
-    ;
+            _d.Logger.error(`Error resetting flow ${UUID}: \n ${err.stack}`);
+        });
 }
+
+export default reset;

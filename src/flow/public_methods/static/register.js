@@ -2,15 +2,19 @@ const _ = require('lodash');
 const Promise = require('bluebird');
 
 /**
- * @param {object} privateData - Object holding private Flow class data
- * @param type
- * @param flowOptions
- * @param flowFunc
- * @param dynamicPropFunc
+ * Register a new type of Flow
+ * @method Flow.register
+ * @public
+ * @param {object} _d - Object holding private Flow class data
+ * @param {string} type - The name of the flow type to register
+ * @param {object} flowOptions - Object holding the options for registering this Flow type
+ * @param {function} flowFunc - Function that will be registered to run for this type
+ * @param {function} dynamicPropFunc - A function that returns an object whose fields will be merged into the data for each
+ *      flow of this type at runtime.
+ * @returns {Promise}
  */
-export default function registerFlow(privateData, type, flowOptions, flowFunc, dynamicPropFunc) {
+function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
 
-    const _d = privateData;
     const Logger = _d.Logger;
 
     // Handle optional arguments
@@ -66,19 +70,17 @@ export default function registerFlow(privateData, type, flowOptions, flowFunc, d
         //Logger.info(`Starting: flowInstance:${flowName}`);
         //logger.debug(job.data);
 
-        // Setup Flow Controller
-        const flowInstance = new _d.Flow(job);
-
-        // Attach data that wasn't saved to Kue/MongoDB
-        flowInstance.data = _.merge(flowInstance.data, _d.toBeAttached);
+        const getFlowInstance = _d.flowInstances.get(job.data._uuid);
 
         // If in devMode do not catch errors, let process crash
         if (_d.o.devMode) {
-            flowWrapper(flowInstance)
-                .then(result => _d.setFlowResult(flowInstance, result))
-                .tap(result => Logger.info(`[${job.type}][${flowInstance.uuid}][${job.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`))
-                .then(result => done(null, result))
-                .then(() => Promise.resolve(delete _d.toBeAttached[flowInstance.uuid]))
+            getFlowInstance
+                .then(flowInstance => {
+                    return flowWrapper(flowInstance)
+                        .then(result => _d.setFlowResult(flowInstance, result))
+                        .tap(result => Logger.info(`[${job.type}][${flowInstance.uuid}][${job.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`))
+                        .then(result => done(null, result))
+                })
                 .catch(err => {
                     if (err.stack) Logger.error(err.stack);
                     else {
@@ -90,12 +92,15 @@ export default function registerFlow(privateData, type, flowOptions, flowFunc, d
         }
         // In production mode catch errors to prevent crashing
         else {
-            flowWrapper(flowInstance)
-                .then(result => flowInstance.setFlowResult(result))
-                .then(result => done(null, result))
-                .then(() => Promise.resolve(delete _d.toBeAttached[ flowInstance.uuid ]))
+            getFlowInstance
+                .then(flowInstance => {
+                    return flowWrapper(flowInstance)
+                        .then(result => _d.setFlowResult(flowInstance, result))
+                        .then(result => done(null, result))
+                })
                 .catch(err => done(err))
             ;
+
         }
 
     });
@@ -104,9 +109,4 @@ export default function registerFlow(privateData, type, flowOptions, flowFunc, d
 
 }
 
-
-    // .then(kueJob => Promise.resolve(new Flow(kueJob)))
-    // .then(flowInstance => {
-    //     flowInstance.data = _.merge(flowInstance.data, toBeAttached);
-    //     return Promise.resolve(flowInstance)
-    // })
+export default register;
