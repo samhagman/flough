@@ -6,10 +6,12 @@ const _ = require('lodash');
 /**
  * Search for flows using MongoDB as the source of truth.
  * Results must match ALL specified parameters: jobIds, flowUUIDs, types
+ * @method Flow.search
+ * @public
  * @param {object} _d - Private Flow data
- * @param {array} [jobIds] - Array of Kue job ids to match
- * @param {array} [flowUUIDs] - Array of Flough flow UUIDs to match
- * @param {array} [types] - Array of flow types to match
+ * @param {Array} [jobIds] - Array of Kue job ids to match
+ * @param {Array} [flowUUIDs] - Array of Flough flow UUIDs to match
+ * @param {Array} [types] - Array of flow types to match
  * @param {string} [isCompleted] - Whether or not to only return isCompleted flows
  * @param {string} [isCancelled] - If set, will return only either cancelled or not cancelled flows. If not set, both.
  * @param {boolean} [activeJobs] - Whether or not to return only active Kue jobs
@@ -100,4 +102,4 @@ export default function search(_d, { jobIds, flowUUIDs, types, isCompleted, isCa
         })
         ;
     });
-}
+};

@@ -23,13 +23,15 @@ function getSearch(redisClient) {
 
 /**
  * Takes space separated query string and performs full text search on the Kue queue with them.
+ * @method Flow.searchKue
+ * @public
  * @param {object} _d - Private Flow object
  * @param {string} query - Text to search within job keys and values
  * @param {boolean} [union=false] - If true, call .type('or') on search query, this changes default of "and" for
  * multiple items.
  * @returns {Promise.<object[]>}
  */
-export default function searchKue(_d, query, union = false) {
+function searchKue(_d, query, union = false) {
 
     const Logger = _d.Logger;
 
@@ -94,3 +96,5 @@ export default function searchKue(_d, query, union = false) {
         });
     }
 }
+
+export default searchKue;
