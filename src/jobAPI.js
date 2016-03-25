@@ -81,7 +81,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
             return new Promise((resolve, reject) => {
 
                 job.data._stepsTaken = job.data._stepsTaken ? job.data._stepsTaken : 0;
-                job.data._substepsTaken = job.data._substepsTaken ? job.data._substepsTaken : 0;
+                job.data._substepsTaken = job.data._substepsTaken ? job.data._substepsTaken : [];
                 _.merge(job.data, FloughInstance._toBeAttached[ job.data._uuid ]);
                 delete FloughInstance._toBeAttached[ job.data._uuid ];
                 job.jobLogger = jobLogger;
