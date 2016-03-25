@@ -2,31 +2,33 @@ const Promise = require('bluebird');
 const util = require('util');
 
 /**
- * Takes information about a job and persists it to mongo and updates instance
- * @param _d
- * @param flowInstance
- * @param {object} job - A Kue job object
- * @param {Number} step - the step this job is occurring on.
- * @param {Number} substep - the substep this job is occurring on.
- * @returns {bluebird|exports|module.exports|Job}
+ * Takes information about a kueJob and persists it to mongo and updates instance
+ * @memberOf Flow
+ * @protected
+ * @param {object} _d - Private Flow data
+ * @param {Flow} flowInstance - The instance of Flow to act upon
+ * @param {object} kueJob - A Kue job object
+ * @param {number} step - the step of the flowInstance the ancestor should be inserted at
+ * @param {number} substep - the substep of the flowInstance the ancestor should be inserted at
+ * @returns {Promise.<object>} - The Kue Job that was used to update the flowInstance
  */
-export default function updateAncestors(_d, flowInstance, job, step, substep) {
+function updateAncestors(_d, flowInstance, kueJob, step, substep) {
 
     return new Promise((resolve, reject) => {
 
         const Logger = _d.Logger;
 
-        // Push job on to the activeChildren stack
-        //Logger.error(')()()()(BEFOREEEEE RElating job here is activeChildren', _this.activeChildren);
+        // Push kueJob on to the activeChildren stack
+        //Logger.error(')()()()(BEFOREEEEE RElating kueJob here is activeChildren', _this.activeChildren);
         //Logger.error(_this);
 
-        flowInstance.activeChildren.push[ job ];
+        flowInstance.activeChildren.push[ kueJob ];
 
-        //Logger.error(')()()()(AFTER RElating job here is activeChildren', _this.activeChildren);
+        //Logger.error(')()()()(AFTER RElating kueJob here is activeChildren', _this.activeChildren);
         _d.FlowModel.findOneAndUpdate({ _id: flowInstance.uuid }, {
             $set: {
                 [`ancestors.${step}.${substep}`]: {
-                    data:   job.data,
+                    data:   kueJob.data,
                     result: null
                 }
             }
@@ -34,10 +36,10 @@ export default function updateAncestors(_d, flowInstance, job, step, substep) {
             if (err) {
                 Logger.error(`Error updating ancestors: ${err.stack}`);
                 Logger.debug(util.inspect(flowDoc, { depth: null, colors: true }));
-                reject(job);
+                reject(kueJob);
             }
 
-            // If this job is part of a helper flow, update parent flows ancestors with this info
+            // If this kueJob is part of a helper flow, update parent flows ancestors with this info
             else {
 
                 flowInstance.ancestors = flowDoc.ancestors;
@@ -50,19 +52,21 @@ export default function updateAncestors(_d, flowInstance, job, step, substep) {
                         }
                     }, { new: true, upsert: true }, (err, parentFlowDoc) => {
                         if (err) {
-                            Logger.error(`Error updating parent flow's ancestors: ${err}`);
-                            reject(job);
+                            Logger.error(`Error updating parent flow's ancestors: ${err.stack}`);
+                            reject(err);
                         }
                         else {
-                            resolve(job);
+                            resolve(kueJob);
                         }
                     });
                 }
                 else {
-                    resolve(job);
+                    resolve(kueJob);
                 }
             }
         });
 
     });
 }
+
+export default updateAncestors;

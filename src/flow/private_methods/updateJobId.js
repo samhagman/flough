@@ -1,6 +1,15 @@
 const Promise = require('bluebird');
 
-export default function updateJobId(_d, flowInstance, flowJob, step, substep) {
+/**
+ * Update the Kue job ID of a child flow
+ * @memberOf Flow
+ * @protected
+ * @param {object} _d - The Private Flow data
+ * @param {Flow} flowInstance - The instance of Flow to act upon
+ * @param {object} kueJob - The kue job to get the ID from
+ * @returns {Promise}
+ */
+function updateJobId(_d, flowInstance, kueJob) {
 
     return new Promise((resolve, reject) => {
 
@@ -13,18 +22,18 @@ export default function updateJobId(_d, flowInstance, flowJob, step, substep) {
 
         const updateTheJob = () => {
             numTries += 1;
-            _d.FlowModel.findOneAndUpdate({ _id: flowJob.data._uuid }, { jobId: flowJob.id }, /*{new: true}, */function(err, flowDoc) {
-                if (err && maxTries > 4) {
+            _d.FlowModel.findOneAndUpdate({ _id: kueJob.data._uuid }, { jobId: kueJob.id }, /*{new: true}, */function(err, flowDoc) {
+                if (err && numTries > maxTries) {
                     clearTheInterval();
-                    flowInstance.flowLogger(`Error updating job in MongoDB with new job id: ${err}`, flowJob.data._uuid, flowJob.id);
+                    flowInstance.flowLogger(`Error updating job in MongoDB with new job id: ${err}`, kueJob.data._uuid, kueJob.id);
                     Logger.error('Error updating job in MongoDB with new job id');
                     Logger.error(err.stack);
                     reject(err);
                 }
-                else if (!flowDoc && maxTries > 4) {
+                else if (!flowDoc && numTries > maxTries) {
                     clearTheInterval();
-                    const errorMsg = `Error updating job in MongoDB with new job id: Could not find job UUID of ${flowJob.data._uuid} in MongoDB`;
-                    flowInstance.flowLogger(errorMsg, flowJob.data._uuid, flowJob.id);
+                    const errorMsg = `Error updating job in MongoDB with new job id: Could not find job UUID of ${kueJob.data._uuid} in MongoDB`;
+                    flowInstance.flowLogger(errorMsg, kueJob.data._uuid, kueJob.id);
                     Logger.error(errorMsg);
                     reject(new Error(errorMsg));
                 }
@@ -39,3 +48,5 @@ export default function updateJobId(_d, flowInstance, flowJob, step, substep) {
 
     });
 }
+
+export default updateJobId;

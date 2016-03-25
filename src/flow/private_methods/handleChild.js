@@ -3,10 +3,12 @@ const _ = require('lodash');
 
 /**
  * Handles storing promise returning functions for a child flow at correct step in Flow instance
- * @param _d
- * @param flowInstance
- * @param {number} step - The step the flow was asked to run at by the user
- * @param {number} substep - The substep that Flow assigned to this flow
+ * @memberOf Flow
+ * @protected
+ * @param {object} _d - Private Flow data
+ * @param {Flow} flowInstance - The Flow instance to act upon
+ * @param {number} step - The step the child flow was asked to run at by the user
+ * @param {number} substep - The substep that the parent flow assigned to this child flow
  * @param {function} flowRunner - Function that will run the flow
  * @param {function} [restartFlow] - TODO Optional function to be called if this job is being restarted
  * @returns {Promise}
@@ -16,7 +18,7 @@ function handleChild(_d, flowInstance, step, substep, flowRunner, restartFlow) {
     return new Promise((handleFlowResolve, handleFlowReject) => {
         const Logger = _d.Logger;
 
-        restartFlow = restartFlow ? restartFlow : (()=> Logger.debug(`${this.loggerPrefix} No restartFlow() passed.`));
+        restartFlow = restartFlow ? restartFlow : (()=> Logger.debug(`${flowInstance.loggerPrefix} No restartFlow() passed.`));
 
         //Logger.debug(`[${_this.uuid}] Handling step ${step}, substep ${substep}`);
 
@@ -51,7 +53,7 @@ function handleChild(_d, flowInstance, step, substep, flowRunner, restartFlow) {
 
                     // Complete the job...
                         .spread((job, result) => {
-                            return flowInstance.completeChild(job, result);
+                            return _d.completeChild(flowInstance, job, result);
                         })
 
                         // Resolve.

@@ -4,9 +4,14 @@ const _ = require('lodash');
 /**
  * This increments the stepsTaken of this Flow on both the mongo doc and flow instance,
  * also resets the substepsTaken to [] on both the Mongo doc and the flow instance as well.
+ * @memberOf Flow
+ * @protected
+ * @param {object} _d - Private Flow data
+ * @param {Flow} flowInstance - The Flow instance to act upon
+ * @param {number} step - The step that is being completed
  * @returns {Promise}
  */
-export default function completeStep(_d, flowInstance, step) {
+function completeStep(_d, flowInstance, step) {
     return new Promise((resolve, reject) => {
         const Logger = _d.Logger;
 
@@ -30,3 +35,5 @@ export default function completeStep(_d, flowInstance, step) {
         ;
     });
 }
+
+export default completeStep;

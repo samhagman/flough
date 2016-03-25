@@ -3,26 +3,32 @@ const setPath = require('../../util/setPath');
 const _ = require('lodash');
 
 /**
- * Increments the substeps taken by the Flow on the instance and in Mongo,
- * sets the Job record in mongo as complete,
- * and adds the flowJob's results to the Flow instance, Flow mongodb record, and Job mongodb record.
- * @returns {Promise}
+ * - Increments the substeps taken by the Flow on the instance and in Mongo
+ * - Sets the Job record in mongo as complete
+ * - Adds the kueJob's results to the Flow instance and the Flow mongodb record
+ * @memberOf Flow
+ * @protected
+ * @param {object} _d - Private Flow data
+ * @param {Flow} flowInstance - Instance of Flow to act upon
+ * @param {object} kueJob - Kue job for this child
+ * @param {*} flowResult - The result of the child flow
+ * @returns {Promise.<null|object>}
  */
-export default function completeChild(_d, flowInstance, flowJob, jobResult) {
+function completeChild(_d, flowInstance, kueJob, flowResult) {
     return new Promise((resolve, reject) => {
         const Logger = _d.Logger;
 
-        if (flowJob) {
+        if (kueJob) {
             // Create field to update
-            const relatedJobResultField = `ancestors.${flowJob.data._step}.${flowJob.data._substep}.result`;
+            const relatedJobResultField = `ancestors.${kueJob.data._step}.${kueJob.data._substep}.result`;
 
             // Update instance with this result
-            setPath(flowInstance, relatedJobResultField, jobResult);
+            setPath(flowInstance, relatedJobResultField, flowResult);
 
             // Find this Flow's doc in Mongo and update the substeps taken
             _d.FlowModel.findByIdAndUpdate(flowInstance.uuid, {
-                    $addToSet: { substepsTaken: flowJob.data._substep },
-                    $set:      { [relatedJobResultField]: jobResult }
+                    $addToSet: { substepsTaken: kueJob.data._substep },
+                    $set:      { [relatedJobResultField]: flowResult }
                 }, { new: true })
                 .then((flowDoc, err) => {
                     if (err) {
@@ -31,15 +37,15 @@ export default function completeChild(_d, flowInstance, flowJob, jobResult) {
                     }
                     else {
 
-                        // Remove flowJob from activeChildren
+                        // Remove kueJob from activeChildren
                         flowInstance.activeChildren = _.remove(flowInstance.activeChildren, (activeJob) => {
-                            return activeJob.id === flowJob.id;
+                            return activeJob.id === kueJob.id;
                         });
 
                         // Update the substeps taken on this flow instance
                         flowInstance.substepsTaken = flowDoc.substepsTaken;
 
-                        return resolve(flowJob);
+                        return resolve(kueJob);
                     }
                 })
             ;
@@ -50,3 +56,5 @@ export default function completeChild(_d, flowInstance, flowJob, jobResult) {
         }
     });
 }
+
+export default completeChild;

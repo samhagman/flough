@@ -1,12 +1,15 @@
 const Promise = require('bluebird');
 
 /**
- * Set the result of this Flow.
- * This is called by the flowAPI.js file when it detects the flow job is done.
- * @param result
- * @returns {Promise}
+ * Set the result of an instance of Flow
+ * @memberOf Flow
+ * @protected
+ * @param {object} _d - The Private Flow data
+ * @param {Flow} flowInstance - The instance of Flow to act upon
+ * @param {*} result - The result of the child flow
+ * @returns {Promise.<*>}
  */
-export default function setFlowResult(_d, flowInstance, result) {
+function setFlowResult(_d, flowInstance, result) {
 
     return new Promise((resolve, reject) => {
         _d.FlowModel.findByIdAndUpdate(flowInstance.uuid, {
@@ -29,3 +32,5 @@ export default function setFlowResult(_d, flowInstance, result) {
         ;
     });
 }
+
+export default setFlowResult;
