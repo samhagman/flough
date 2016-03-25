@@ -4,15 +4,15 @@ const Promise = require('bluebird');
 const redis = require('redis');
 const express = require('express');
 
-let FloughInstance;
+let Flough;
 
 /**
  * Returns the FloughBuilder object, which just has one function: init(o);
  * @returns {*}
  */
 export default function floughBuilder() {
-    if (FloughInstance) {
-        return FloughInstance;
+    if (Flough) {
+        return Flough;
     }
     else {
 
@@ -20,52 +20,28 @@ export default function floughBuilder() {
             // Initialize a Flough instance using the passed options
             init(o) {
 
-                // Base class that inherits from the event emitter class
-                class Flough {
-
-                    constructor() {
-                        events.EventEmitter.call(this);
-                    }
-                }
-                Flough.prototype.__proto__ = events.EventEmitter.prototype;
+                Flough = {};
 
                 // Setup defaults
-                Flough.prototype.o = setupDefaults(o);
+                Flough.o = setupDefaults(o);
 
                 // Setup Kue queue
-                return setupKue(Flough.prototype.o)
+                return setupKue(Flough.o)
 
                 // Setup and attach storage and Redis clients to Flough Class
                     .then((queue) => [ queue, setupStorage(Flough), setupRedis(Flough) ])
                     .spread((queue, storageClient, redisClient) => {
 
-                        // Setup search functionality for Flough Class
-                        let searchFunctions = require('./util/searcher')(
-                            queue,
-                            redisClient,
-                            Flough.prototype.o,
-                            Flough.prototype.storageClient
-                        );
-
-                        Flough.prototype.searchKue = searchFunctions.searchKue;
-                        Flough.prototype.searchFlows = searchFunctions.searchFlows;
-
-                        // Create a Flough Instance
-                        FloughInstance = new Flough();
-
                         // Setup and attach the APIs for Flows and
-                        FloughInstance.Flow = require('./flow')(queue, storageClient, redisClient, FloughInstance);
-
-                        // Attach flowLogger to Flough Instance
-                        FloughInstance.flowLogger = require('./util/flowLogger')(storageClient, FloughInstance.o.logger.func);
+                        Flough.Flow = require('./flow')(queue, storageClient, redisClient, Flough);
 
                         // Expose the kue library directly
-                        FloughInstance.kue = kue;
+                        Flough.kue = kue;
 
                         // Expose Kue queue
-                        FloughInstance.queue = queue;
+                        Flough.queue = queue;
 
-                        return FloughInstance;
+                        return Flough;
                     });
 
             }
@@ -127,8 +103,8 @@ function setupDefaults(o) {
  * @returns {*}
  */
 function setupRedis(FloughAPI) {
-    let o = FloughAPI.prototype.o;
-    FloughAPI.prototype.o.redis.type = FloughAPI.prototype.o.redis.type ? FloughAPI.prototype.o.redis.type : 'default';
+    let o = FloughAPI.o;
+    FloughAPI.o.redis.type = FloughAPI.o.redis.type ? FloughAPI.o.redis.type : 'default';
     let redisClient;
 
     // If user has passed Redis options
@@ -168,7 +144,7 @@ function setupRedis(FloughAPI) {
     }
 
     // Attach redis client directly to the Flough Class
-    FloughAPI.prototype.redisClient = redisClient;
+    FloughAPI.redisClient = redisClient;
 
     return redisClient;
 }
@@ -181,13 +157,13 @@ function setupRedis(FloughAPI) {
  * @returns {*}
  */
 function setupStorage(FloughAPI) {
-    let o = FloughAPI.prototype.o;
+    let o = FloughAPI.o;
 
     switch (o.storage.type) {
         case 'mongoose' || 'mongodb':
         {
-            FloughAPI.prototype.storageClient = require('./storage/mongodb')(o);
-            return FloughAPI.prototype.storageClient;
+            FloughAPI.storageClient = require('./storage/mongodb')(o);
+            return FloughAPI.storageClient;
         }
 
         default:

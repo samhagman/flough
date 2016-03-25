@@ -3,11 +3,8 @@ const kue = require('kue');
 const _ = require('lodash');
 const util = require('util');
 const crypto = require('crypto');
-const EventEmitter3 = require('eventemitter3');
-
-
-// Private methods
-
+const EventEmitter3Class = require('eventemitter3');
+const StrictMap = require('../util/StrictMap');
 
 /**
  * Builds the Flow API
@@ -15,7 +12,7 @@ const EventEmitter3 = require('eventemitter3');
  * @param {object} mongoCon - Mongoose Connection
  * @param {object} redisClient - Redis client connection
  * @param {object} FloughInstance - Instance of Flough that is passed to the user.
- * @returns {{registerFlow, startFlow}}
+ * @returns {Flow}
  */
 export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInstance) {
 
@@ -39,7 +36,6 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
 
     // Private Data - Internal to Flow - A.K.A. _d
     const privateData = {
-        FlowController:   require('./FlowController')(queue, mongoCon, FloughInstance, start),
         queue:            queue,
         mongoCon:         mongoCon,
         o:                FloughInstance.o,
@@ -49,10 +45,10 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         redisClient:      redisClient,
         dynamicPropFuncs: {},
         jobOptions:       {},
-        toBeAttached:     new WeakMap(),
+        flowInstances:    new StrictMap(),
         Flow:             Flow
-
     };
+
     privateData.setFlowResult = require('./private_methods/setFlowResult').bind(null, privateData);
     privateData.completeChild = require('./private_methods/completeChild').bind(null, privateData);
     privateData.completeStep = require('./private_methods/completeStep').bind(null, privateData);
@@ -60,13 +56,170 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     privateData.updateAncestors = require('./private_methods/updateAncestors').bind(null, privateData);
     privateData.updateJobId = require('./private_methods/updateJobId').bind(null, privateData);
 
-
     /**
      * @class Flow
+     * @extends EventEmitter
      */
-    class Flow extends EventEmitter3 {
+    class Flow extends EventEmitter3Class {
+        /**
+         * EventEmitter for global Flow events which takes in all Flow instance events, transforms them, and emits them from
+         * this static property of the class itself.
+         * @static
+         * @type {EventEmitter}
+         */
+        static events = new EventEmitter3Class();
+
+        /**
+         * Raw Mongoose Connection to MongoDB
+         * @instance
+         * @type {object}
+         */
+        mongoCon;
+
+        /**
+         * Kue job created to track the life of this flow
+         * @instance
+         * @type {object}
+         */
+        kueJob;
+
+        /**
+         * The id of the Kue job tracking this flow (kueJob.id)
+         * @instance
+         * @type {number}
+         */
+        jobId;
+
+        /**
+         * The initializer data that was given when this flow was created
+         * @instance
+         * @type {object}
+         */
+        data;
+
+        /**
+         * The type of this flow (kueJob.type)
+         * @instance
+         * @type {string}
+         */
+        type;
+
+        /**
+         * The UUID that was assigned to this flow
+         * @instance
+         * @type {string}
+         */
+        uuid;
+
+        /**
+         * The UUID of the parent of this flow if one exists
+         * @instance
+         * @type {string}
+         */
+        parentUUID;
+
+        /**
+         * The number of steps that this flow has taken so far
+         * @instance
+         * @type {number}
+         */
+        stepsTaken;
+
+        /**
+         * The number of substeps that have been taken at the current step
+         * @instance
+         * @type {Array}
+         */
+        substepsTaken;
+
+        /**
+         * The prefix to use for logging strings.
+         * @instance
+         * @type {string}
+         */
+        loggerPrefix;
+
+        /**
+         * The logging function to use to log messages pertaining to this flow instance.  Saves them to MongoDB.
+         * @instance
+         * @type {function}
+         */
+        flowLogger;
+
+        /**
+         * Whether or not this flow was started by another flow instance.
+         * @instance
+         * @type {boolean}
+         */
+        isChild;
+
+        /**
+         * Whether or not this instance has child flows that it started.
+         * @instance
+         * @default
+         * @type {boolean}
+         */
+        isParent = true;
+
+        /**
+         * Whether or not this flow instance has completed.
+         * @instance
+         * @default
+         * @type {boolean}
+         */
+        isCompleted = false;
+
+        /**
+         * Whether or not this flow instance is cancelled.
+         * @instance
+         * @default
+         * @type {boolean}
+         */
+        isCancelled = false;
+
+        /**
+         * This will hold a counter of how many substeps have been added for a given step, which allows us to
+         * dynamically assign substeps to jobs as they are called in the flow chain.
+         * @type {object}
+         */
+        substeps = {};
+
+        /**
+         * Holds the flowJob information of each flowJob
+         * @example { '1': {'1': { data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 1's RESULT STR' }, '2': {
+             *     data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
+         * @type {object}
+         */
+        ancestors = {};
+
+        /**
+         * Holds jobs that are currently running for this Flow
+         * @type {Array}
+         */
+        activeChildren = [];
+
+        /**
+         * This holds an array of functions, which return promises, which resolve when the flowJob has been all setup
+         * and registered on the flow instance properly (in this.promised) and now are just waiting to be initiated
+         * by the unpackPromises function (check .endChain() for more)
+         * @type {Array}
+         */
+        flowHandlers = [];
+
+        /**
+         * This is the step map that is created by all the functions in this.jobHandlers.  Each key corresponds to
+         * a step and holds an array of functions that when called will start the flowJob (by adding a flowJob to the Kue
+         * queue)
+         * @type {object.<string, function[]>}
+         */
+        promised = {
+            '0': []
+        };
+
 
         constructor(kueJob) {
+            // Apply EventEmitter3 instance properties
+            super();
 
             // Setup Flow's properties
             this.mongoCon = mongoCon;
@@ -87,46 +240,6 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
             // This is a logger that will log messages both to the flowJob itself (flowJob.log) but also to persistent storage
             this.flowLogger = require('../util/flowLogger')(mongoCon, Logger);
 
-            /**
-             * This will hold a counter of how many substeps have been added for a given step, which allows us to
-             * dynamically assign substeps to jobs as they are called in the flow chain.
-             * @type {object}
-             */
-            this.substeps = {};
-
-            /**
-             * Holds the flowJob information of each flowJob
-             * @example { '1': {'1': { data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 1's RESULT STR' }, '2': {
-             *     data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
-             * @type {{}}
-             */
-            this.ancestors = {};
-
-            /**
-             * Holds jobs that are currently running for this Flow
-             * @type {array}
-             */
-            this.activeChildren = [];
-
-            /**
-             * This holds an array of functions, which return promises, which resolve when the flowJob has been all setup
-             * and registered on the flow instance properly (in this.promised) and now are just waiting to be initiated
-             * by the unpackPromises function (check .end() for more)
-             * @type {array}
-             */
-            this.flowHandlers = [];
-
-            /**
-             * This is the step map that is created by all the functions in this.jobHandlers.  Each key corresponds to
-             * a step and holds an array of functions that when called will start the flowJob (by adding a flowJob to the Kue
-             * queue)
-             * @type {{string: Array}}
-             */
-            this.promised = {
-                '0': []
-            };
-
-
             // Emit any events from the kue job on this instance as well
             kueJob.on('enqueue', () => this.emit('enqueue', ...arguments));
             kueJob.on('promotion', () => this.emit('promotion', ...arguments));
@@ -144,14 +257,16 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         //============================================================
 
         /**
-         * Registers a function so that it can be called by .start()
-         * @method Flow#register
-         * @param {string} type - Name of flow (successive calls of same flowName overwrite previous Flows)
-         * @param {object} [flowOptions] - Options for how to process this flow
-         * @param {function} flowFunc - User passed function that is the Flow's logic
-         * @param {function} [dynamicPropFunc] - This is function to be run at job start time which should return an object
-         *  that will be merged into the job.data of all jobs of this type.
-         *  @returns {Promise} - Resolves when flow has been registered
+         * Register a new type of Flow
+         * @method Flow.register
+         * @public
+         * @param {object} _d - Object holding private Flow class data
+         * @param {string} type - The name of the flow type to register
+         * @param {object} flowOptions - Object holding the options for registering this Flow type
+         * @param {function} flowFunc - Function that will be registered to run for this type
+         * @param {function} dynamicPropFunc - A function that returns an object whose fields will be merged into the data for each
+         *      flow of this type at runtime.
+         * @returns {Promise}
          */
         static register(type, flowOptions, flowFunc, dynamicPropFunc) {
             return register(privateData, ...arguments);
@@ -215,9 +330,9 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * Search for flows using MongoDB as the source of truth.
          * Results must match ALL specified parameters: jobIds, flowUUIDs, types
          * @param {object} _d - Private Flow data
-         * @param {array} [jobIds] - Array of Kue job ids to match
-         * @param {array} [flowUUIDs] - Array of Flough flow UUIDs to match
-         * @param {array} [types] - Array of flow types to match
+         * @param {Array} [jobIds] - Array of Kue job ids to match
+         * @param {Array} [flowUUIDs] - Array of Flough flow UUIDs to match
+         * @param {Array} [types] - Array of flow types to match
          * @param {string} [isCompleted] - Whether or not to only return isCompleted flows
          * @param {string} [isCancelled] - If set, will return only either cancelled or not cancelled flows. If not set, both.
          * @param {boolean} [activeJobs] - Whether or not to return only active Kue jobs
@@ -247,13 +362,13 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
 
         /**
          * Initializes the Flow, needed to finish construction of Flow instance
-         * @method Flow.begin
+         * @method Flow.beginChain
          * @this Flow
          * @param {object} _d - Private Flow data
-         * @param {Promise[]} [promiseArray] - Array of promises to resolve before first job of flow will run, not necessarily before the .begin() will run.
+         * @param {Promise[]} [promiseArray] - Array of promises to resolve before first job of flow will run, not necessarily before the .beginChain() will run.
          * @returns {Flow}
          */
-        begin() {
+        beginChain() {
             return begin.call(this, privateData, ...arguments);
         }
 
@@ -305,15 +420,15 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * 4. Then starts to run the steps of the Flow, one step at a time, using a recursive function that only calls
          * itself once all the promises it initiated at a step are complete.
          *
-         * Once end resolves, the flow function using this flow will call `done(result)` which will pass the result back
+         * Once endChain resolves, the flow function using this flow will call `done(result)` which will pass the result back
          * to the flowAPI.js file which will then call `.setFlowResult` on an instance of this class which will both set
          * this flow as complete and update the result the user passed inside of Mongo.
-         * @method Flow.end
+         * @method Flow.endChain
          * @this Flow
          * @param {object} _d - Private Flow data
          * @returns {Promise.<Flow>}
          */
-        end() {
+        endChain() {
             return end.call(this, privateData, ...arguments)
         }
 
@@ -324,14 +439,6 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     //             SETUP FLOW'S GLOBAL EVENTS EMITTER
     //
     //============================================================
-
-    /**
-     * EventEmitter for global Flow events which takes in all Flow instance events, transforms them, and emits them from
-     * this static property of the class itself.
-     * @static
-     * @type {EventEmitter}
-     */
-    Flow.events = new EventEmitter3();
 
     if (privateData.o.returnJobOnEvents) {
         // Setup queue logging events
