@@ -1,15 +1,14 @@
 {
   "name": "flough",
   "description": "A job orchestration framework.",
-  "version": "7.2.0",
   "author": "Sam Hagman <samuel.hagman@gmail.com>",
   "license": "MIT",
   "scripts": {
     "dev": "node index.js",
     "start:mongodb": "mongod --replSet test --dbpath ./data/",
     "start:redis": "redis-server",
-    "prepublish": "./node_modules/.bin/babel -d lib/ src/",
-    "transpile": "./node_modules/.bin/babel -d lib/ src/"
+    "prepublish": "npm run transpile",
+    "transpile": "rm -drf lib/; babel -d lib/ src/"
   },
   "main": "index.js",
   "repository": {

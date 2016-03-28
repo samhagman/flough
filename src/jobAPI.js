@@ -18,9 +18,10 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
     let JobModel = mongoCon.model('job');
     let jobLogger = require('./jobLogger')(mongoCon, Logger);
 
-    FloughInstance.dynamicPropFuncs = {};
-    FloughInstance.jobOptions = {};
-    FloughInstance.toBeAttached = {};
+    FloughInstance._dynamicPropFuncs = {};
+    FloughInstance._jobOptions = {};
+    FloughInstance._toBeAttached = {};
+
 
     /**
      * Allows a User to register a job function for repeated use by .startJob()
@@ -36,36 +37,35 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
         if (arguments.length === 2) {
             jobFunc = jobOptions;
             jobOptions = {};
-            dynamicPropFunc = () => {
-                return {};
-            };
-        } else if (arguments.length === 3) {
+            dynamicPropFunc = () => { return {}; };
+        }
+        else if (arguments.length === 3) {
             if (!_.isPlainObject(jobOptions)) {
                 dynamicPropFunc = jobFunc;
                 jobFunc = jobOptions;
                 jobOptions = {};
-            } else {
-                dynamicPropFunc = () => {
-                    return {};
-                };
+            }
+            else {
+                dynamicPropFunc = (() => { return {}; });
             }
         }
 
         // Add the function to the dynamic properties functions list.
-        FloughInstance.dynamicPropFuncs[jobType] = dynamicPropFunc;
-        FloughInstance.jobOptions[jobType] = jobOptions;
+        FloughInstance._dynamicPropFuncs[ jobType ] = dynamicPropFunc;
+        FloughInstance._jobOptions[ jobType ] = jobOptions;
 
         /**
          * Take a job instance and cancel it.
          * @param {object} job - A Kue job object
          * @param {object} data - Data about cancellation
          */
-        const cancelJob = function (job, data = {}) {
-            FloughInstance.emit(`CancelFlow:${ job.data._flowId }`, data);
-            Logger.error(`[${ job.type }][${ job.data._uuid }][${ job.id }] Cancelling job.`);
+        const cancelJob = function(job, data = {}) {
+            FloughInstance.emit(`CancelFlow:${job.data._flowId}`, data);
+            Logger.error(`[${job.type}][${job.data._uuid}][${job.id}] Cancelling job.`);
             job.log('Job cancelled by parent flow.');
             job.failed();
         };
+
 
         /**
          * Wraps the user-given job in a promise,
@@ -74,7 +74,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          * @param job
          * @returns {bluebird|exports|module.exports}
          */
-        const jobWrapper = function (job) {
+        const jobWrapper = function(job) {
             //Logger.info(`Starting: ${jobType}`);
             //Logger.debug(`Job's data:`, job.data);
 
@@ -82,15 +82,17 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
                 job.data._stepsTaken = job.data._stepsTaken ? job.data._stepsTaken : 0;
                 job.data._substepsTaken = job.data._substepsTaken ? job.data._substepsTaken : [];
-                _.merge(job.data, FloughInstance.toBeAttached[job.data._uuid]);
-                delete FloughInstance.toBeAttached[job.data._uuid];
+                _.merge(job.data, FloughInstance._toBeAttached[ job.data._uuid ]);
+                delete FloughInstance._toBeAttached[ job.data._uuid ];
                 job.jobLogger = jobLogger;
-                job.cancel = function (data) {
+                job.cancel = function(data) {
                     cancelJob(job, data);
                 };
 
                 jobFunc(job, resolve, reject);
+
             });
+
         };
 
         /**
@@ -98,23 +100,26 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
          * @param job
          * @returns {bluebird|exports|module.exports}
          */
-        const updateJobInMongo = function (job) {
+        const updateJobInMongo = function(job) {
             return new Promise((resolve, reject) => {
                 JobModel.findById(job.data._uuid, (err, jobDoc) => {
                     if (err) {
                         Logger.error(err.stack);
                         reject(err);
-                    } else if (jobDoc) {
+                    }
+                    else if (jobDoc) {
                         jobDoc.jobId = job.id;
                         jobDoc.data = job.data;
                         jobDoc.save();
                         resolve(job);
-                    } else {
+                    }
+                    else {
                         // TODO If the document wasn't found in persistent storage, maybe make a new job?
                     }
                 });
             });
         };
+
 
         /**
          * This is the number of this type of job that will be run simultaneously before the next added job is queued
@@ -129,19 +134,28 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
             // If in devMode, do not catch errors let the process crash
             if (o.devMode) {
-                updateJobInMongo(job).tap(job => FloughInstance.once(`CancelJob:${ job.data._uuid }`, data => cancelJob(job, data))).then(jobWrapper).done(result => done(null, result));
+                updateJobInMongo(job)
+                    .tap(job => FloughInstance.once(`CancelJob:${job.data._uuid}`, data => cancelJob(job, data)))
+                    .then(jobWrapper)
+                    .done((result) => done(null, result));
             }
 
             // If in production mode, catch errors to prevent crashing
             else {
-                    updateJobInMongo(job).tap(job => FloughInstance.once(`CancelJob:${ job.data._uuid }`, data => cancelJob(job))).then(jobWrapper).then(result => done(null, result)).catch(err => {
+                updateJobInMongo(job)
+                    .tap(job => FloughInstance.once(`CancelJob:${job.data._uuid}`, data => cancelJob(job)))
+                    .then(jobWrapper)
+                    .then((result) => done(null, result))
+                    .catch(err => {
                         Logger.error(err.stack);
 
                         // TODO setup softShutdown(blah, blah, done, err)
                         done(err);
-                    });
-                }
+                    })
+                ;
+            }
         });
+
     }
 
     /**
@@ -154,27 +168,33 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
         return new Promise((resolve, reject) => {
 
-            var dynamicPropFunc = FloughInstance.dynamicPropFuncs[jobType];
+            const dynamicPropFunc = FloughInstance._dynamicPropFuncs[ jobType ];
 
-            var jobOptions = FloughInstance.jobOptions[jobType];
+            const jobOptions = FloughInstance._jobOptions[ jobType ];
 
             const noSaveFieldNames = jobOptions.noSave || [];
 
             const newData = _.omit(data, noSaveFieldNames);
 
-            FloughInstance.toBeAttached[data._uuid] = _.pick(data, noSaveFieldNames);
+            FloughInstance._toBeAttached[ data._uuid ] = _.pick(data, noSaveFieldNames);
 
             if (_.isFunction(dynamicPropFunc)) {
                 let dynamicProperties = dynamicPropFunc(newData);
                 let mergedProperties = _.merge(newData, dynamicProperties);
 
-                resolve(queue.create(`job:${ jobType }`, mergedProperties));
-            } else {
-                Logger.error(`Dynamic property passed was not a function for job type ${ jobType }`);
+                resolve(queue.create(`job:${jobType}`, mergedProperties));
+
+            }
+            else {
+                Logger.error(`Dynamic property passed was not a function for job type ${jobType}`);
                 Logger.error(JSONIFY(dynamicPropFunc));
                 reject('Dynamic property passed was not a function.');
             }
+
+
         });
+
+
     }
 
     /**
@@ -199,24 +219,24 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
             let alreadyPersisted = false;
 
             if (!data._uuid) {
-                const randomStr = 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-                    let r = crypto.randomBytes(1)[0] % 16 | 0,
-                        v = c == 'x' ? r : (r & 0x3 | 0x8).toString(16);
+                const randomStr = 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    let r = crypto.randomBytes(1)[ 0 ] % 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8).toString(16);
                     return v.toString(16);
                 });
                 data._uuid = new ObjectId(randomStr);
-            } else {
+            }
+            else {
                 alreadyPersisted = true;
             }
 
             let jobFields = {
-                _id: data._uuid,
-                jobId: -1,
-                type: jobType,
-                title: data.title,
-                step: data._step ? data._step : 0,
+                _id:     data._uuid,
+                jobId:   -1,
+                type:    jobType,
+                title:   data.title,
+                step:    data._step ? data._step : 0,
                 substep: data._substep ? data._substep : 0,
-                data: data,
+                data:    data,
                 jobLogs: []
             };
 
@@ -227,10 +247,10 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
 
             // If no flowId was passed then set the flowId to 'NoFlow' to signify this is a solo job
             else {
-                    jobFields._flowId = 'NoFlow';
-                    data._flowId = 'NoFlow';
-                    data._flowType = 'NoFlow';
-                }
+                jobFields._flowId = 'NoFlow';
+                data._flowId = 'NoFlow';
+                data._flowType = 'NoFlow';
+            }
 
             // If no title was passed, set title to the job's type
             if (!data.title) {
@@ -244,12 +264,14 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
                     if (err) {
                         Logger.error(err.stack);
                         reject(err);
-                    } else {
+                    }
+                    else {
                         // Resolve with a Kue job that still needs to be .save()'d for it to run.
                         resolve(createJob(jobType, data));
                     }
                 });
-            } else {
+            }
+            else {
                 resolve(createJob(jobType, data));
             }
         });
