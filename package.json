@@ -8,7 +8,7 @@
     "start:mongodb": "mongod --replSet test --dbpath ./data/",
     "start:redis": "redis-server",
     "prepublish": "npm run transpile",
-    "transpile": "rm -drf lib/; babel -d lib/ src/"
+    "transpile": "rm -drf lib/; node_modules/.bin/babel -d lib/ src/"
   },
   "main": "index.js",
   "repository": {
