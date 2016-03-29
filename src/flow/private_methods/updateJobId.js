@@ -1,7 +1,7 @@
 const Promise = require('bluebird');
 
 /**
- * Update the Kue job ID of a child flow
+ * Update the Kue job ID of a flow
  * @memberOf Flow
  * @protected
  * @param {object} _d - The Private Flow data
