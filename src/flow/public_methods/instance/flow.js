@@ -96,43 +96,38 @@ function flow(_d, step, type, flowData = {}) {
                             // Set parent values on child flow
                             finalJobData._parentUUID = _this.uuid;
                             finalJobData._parentType = _this.type;
+                            finalJobData._isChild = true;
 
                             /**
                              * Start the flow.
                              */
 
-                            Flow.start(type, finalJobData, true)
-                                .then(flowJob => {
+                            const flow = new _d.Flow(type, finalJobData);
 
-                                    // When job is enqueued into Kue, relate the job to this flow.
-                                    let updateAncestorsPromise;
-                                    let updateJobIdPromise;
-                                    flowJob.on('enqueue', () => {
+                            // When job is enqueued into Kue, relate the job to this flow.
+                            let updateAncestorsPromise;
+                            flow.on('enqueue', () => {
+                                process.nextTick(() => {
+                                    updateAncestorsPromise = _d.updateAncestors(_this, flow, step, substep);
+                                });
+                            });
 
-                                        // TODO? Maybe have to also update flow's jobId lke in job function
-                                        updateAncestorsPromise = _d.updateAncestors(_this, flowJob, step, substep);
-                                        updateJobIdPromise = _d.updateJobId(_this, flowJob);
-                                    });
+                            // When job is complete, resolve with job and result.
+                            flow.on('complete', (result) => {
+                                updateAncestorsPromise
+                                    .then(() => {
+                                        _this.flowLogger('Completed child flow duties.', flow.data._uuid, flow.id);
+                                        flowResolve([ flow, (result ? result : null) ]);
+                                    })
+                                    .catch((err) => flowReject(err))
+                                ;
+                            });
 
-                                    // When job is complete, resolve with job and result.
-                                    flowJob.on('complete', (result) => {
-                                        Promise.join(updateAncestorsPromise, updateJobIdPromise)
-                                            .then(() => {
-                                                _this.flowLogger('Completed child flow duties.', flowJob.data._uuid, flowJob.id);
-                                                flowResolve([ flowJob, (result ? result : null) ]);
-                                            })
-                                            .catch((err) => flowReject(err))
-                                        ;
-                                    });
-
-                                    // Actually start this job inside Kue.
-                                    flowJob.save(err => {
-                                        if (err) {
-                                            Logger.error(err.stack);
-                                        }
-                                    });
-                                })
+                            flow
+                                .save()
+                                .error(err => flowReject(err))
                             ;
+
                         }
                         catch (err) {
                             flowReject(err);

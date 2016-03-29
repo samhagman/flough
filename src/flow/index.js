@@ -32,10 +32,31 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     const execF = require('./public_methods/instance/execF');
     const flow = require('./public_methods/instance/flow');
     const instance_cancel = require('./public_methods/instance/instance_cancel');
+    const save = require('./public_methods/instance/save');
 
-
-    // Private Data - Internal to Flow - A.K.A. _d
-    const privateData = {
+    /**
+     * Private Data - Internal to Flow - A.K.A. _d
+     * @namespace
+     * @prop {object} queue
+     * @prop {object} mongoCon
+     * @prop {object} o
+     * @prop {object} Logger
+     * @prop {object} FloughInstance
+     * @prop {object} FlowModel
+     * @prop {object} redisClient
+     * @prop {object} dynamicPropFuncs
+     * @prop {object} jobOptions
+     * @prop {StrictMap} flowInstances
+     * @prop {WeakMap} toBePersisted
+     * @prop {Flow} Flow
+     * @prop {function} setFlowResult
+     * @prop {function} completeChild
+     * @prop {function} completeStep
+     * @prop {function} handleChild
+     * @prop {function} updateAncestors
+     * @prop {function} updateJobId
+     */
+    const _d = {
         queue:            queue,
         mongoCon:         mongoCon,
         o:                FloughInstance.o,
@@ -46,15 +67,16 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         dynamicPropFuncs: {},
         jobOptions:       {},
         flowInstances:    new StrictMap(),
+        toBePersisted:    new WeakMap(),
         Flow:             Flow
     };
 
-    privateData.setFlowResult = require('./private_methods/setFlowResult').bind(null, privateData);
-    privateData.completeChild = require('./private_methods/completeChild').bind(null, privateData);
-    privateData.completeStep = require('./private_methods/completeStep').bind(null, privateData);
-    privateData.handleChild = require('./private_methods/handleChild').bind(null, privateData);
-    privateData.updateAncestors = require('./private_methods/updateAncestors').bind(null, privateData);
-    privateData.updateJobId = require('./private_methods/updateJobId').bind(null, privateData);
+    _d.setFlowResult = require('./private_methods/setFlowResult').bind(null, _d);
+    _d.completeChild = require('./private_methods/completeChild').bind(null, _d);
+    _d.completeStep = require('./private_methods/completeStep').bind(null, _d);
+    _d.handleChild = require('./private_methods/handleChild').bind(null, _d);
+    _d.updateAncestors = require('./private_methods/updateAncestors').bind(null, _d);
+    _d.updateJobId = require('./private_methods/updateJobId').bind(null, _d);
 
     /**
      * @class Flow
@@ -178,6 +200,14 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         isCancelled = false;
 
         /**
+         * Whether or not this flow has been restarted
+         * @instance
+         * @default
+         * @type {boolean}
+         */
+        isRestarted = false;
+
+        /**
          * This will hold a counter of how many substeps have been added for a given step, which allows us to
          * dynamically assign substeps to jobs as they are called in the flow chain.
          * @type {object}
@@ -217,28 +247,109 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         };
 
 
-        constructor(kueJob) {
+        /**
+         * Starts a Flow by attaching extra fields to the User passed data and running Kue's queue.create()
+         * @param {string} flowType - Type of flow to construct
+         * @param {object} [givenData={}] - Data context to be attached to this Flow
+         */
+        constructor(flowType, givenData = {}) {
             // Apply EventEmitter3 instance properties
             super();
 
+            const Logger = _d.Logger;
+
+            //============================================================
+            //
+            //                     SETUP FLOW DATA
+            //
+            //============================================================
+
+            // Clone the given data to modify
+            let flowData = _.clone(givenData);
+
+            // Set flowData properties to default values if needed
+            if (!flowData._stepsTaken) flowData._stepsTaken = -1;
+            if (!flowData._substepsTaken) flowData._substepsTaken = [];
+            if (!flowData._parentUUID) flowData._parentUUID = 'NoFlow';
+            if (!flowData._parentType) flowData._parentType = 'NoFlow';
+            if (!flowData._type) flowData._type = flowType;
+            flowData._isChild = !!flowData._isChild;
+
+            // Get the job options that were registered to this flow type
+            const jobOptions = _d.jobOptions[ flowType ];
+
+            // Get the field names that should not be saved into Kue (and stringified)
+            const noSaveFieldNames = jobOptions.noSave || [];
+
+            // Remove the fields we shouldn't save to get data we should persist
+            const dataToBePersisted = _.omit(flowData, noSaveFieldNames);
+
+            // Get the dynamicPropertyFunc that was registered to this flow type
+            const dynamicPropFunc = _d.dynamicPropFuncs[ flowType ];
+            if (!_.isFunction(dynamicPropFunc)) {
+                Logger.error(`Dynamic property passed was not a function for job type ${flowType}`);
+                Logger.error(util.inspect(dynamicPropFunc));
+                throw new Error('Dynamic property passed was not a function.');
+            }
+
+            // Build dynamic properties and merge them into the given data
+            let dynamicProperties = dynamicPropFunc(dataToBePersisted);
+            let mergedProperties = _.merge(dataToBePersisted, dynamicProperties);
+
+            // If there is no passed UUID, then create one
+            if (!mergedProperties._uuid) {
+
+                // Set _isRestarted to false since we are creating a new UUID
+                mergedProperties._isRestarted = false;
+
+                const randomStr = 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    let r = crypto.randomBytes(1)[ 0 ] % 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8).toString(16);
+                    return v.toString(16);
+                });
+                mergedProperties._uuid = (new ObjectId(randomStr)).toString();
+            }
+            else {
+                // Set _isRestarted to true since there was an existing UUID that has been passed
+                mergedProperties._isRestarted = true;
+            }
+
+            //============================================================
+            //
+            //             ASSIGN FLOW DATA TO NEEDED LOCATIONS
+            //
+            //============================================================
+
+            // Save the instance of this flow so the register function can inject this instance that was created here
+            _d.flowInstances.set(mergedProperties._uuid, this);
+
+            // Set the data that should be persisted when/if flow#save is called
+            _d.toBePersisted.set(this, mergedProperties);
+
+            // Construct the kueJob for this flow
+            const kueJob = _d.queue.create(`flow:${flowType}`, mergedProperties);
+
             // Setup Flow's properties
+            this.data = _.merge(kueJob.data, _.pick(flowData, noSaveFieldNames));
             this.mongoCon = mongoCon;
             this.kueJob = kueJob;
             this.jobId = kueJob.id;
-            this.data = kueJob.data;
             this.type = kueJob.type;
             this.uuid = kueJob.data._uuid;
             this.parentUUID = kueJob.data._parentUUID;
             this.stepsTaken = kueJob.data._stepsTaken;
             this.substepsTaken = kueJob.data._substepsTaken;
-            this.isCompleted = false;
-            this.isCancelled = false;
-            this.isParent = true;
+            this.isRestarted = kueJob.data._isRestarted;
             this.isChild = kueJob.data._isChild;
             this.loggerPrefix = `[${this.type}][${this.uuid}][${this.kueJob.id}]`;
 
             // This is a logger that will log messages both to the flowJob itself (flowJob.log) but also to persistent storage
             this.flowLogger = require('../util/flowLogger')(mongoCon, Logger);
+
+            //============================================================
+            //
+            //      SETUP PROXYING OF KUE EVENTS ONTO FLOW INSTANCE
+            //
+            //============================================================
 
             // Emit any events from the kue job on this instance as well
             kueJob.on('enqueue', () => this.emit('enqueue', ...arguments));
@@ -269,19 +380,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise}
          */
         static register(type, flowOptions, flowFunc, dynamicPropFunc) {
-            return register(privateData, ...arguments);
-        }
-
-        /**
-         * Starts a Flow by attaching extra fields to the User passed data and running Kue's queue.create()
-         * @method Flow#start
-         * @param {string} flowName - Name of Flow to start
-         * @param {object} [givenData] - Data context to be attached to this Flow
-         * @param {boolean} [isParent] - If this is a helper flow, it will not restart on its own after a server restart.
-         * @returns {Promise.<object>} - Resolves with a flowJob object
-         */
-        static start(flowName, givenData, isParent) {
-            return start(privateData, ...arguments);
+            return register(_d, ...arguments);
         }
 
         /**
@@ -291,7 +390,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise} - Resolves when cancellation event has been sent
          */
         static cancel(UUID) {
-            return static_cancel(privateData, ...arguments);
+            return static_cancel(_d, ...arguments);
         }
 
         /**
@@ -302,7 +401,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise} - Resolves when the flow has been reset
          */
         static reset(UUID, stepNumber) {
-            return reset(privateData, ...arguments)
+            return reset(_d, ...arguments)
         }
 
         /**
@@ -312,7 +411,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object>} - Resolves with a flowJob object
          */
         static clone(UUID) {
-            return clone(privateData, ...arguments);
+            return clone(_d, ...arguments);
         }
 
 
@@ -323,7 +422,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object>} - Resolves with an object with all of the flow's data stored in MongoDB
          */
         static status(UUID) {
-            return status(privateData, ...arguments);
+            return status(_d, ...arguments);
         }
 
         /**
@@ -339,7 +438,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object[]>}
          */
         static search() {
-            return search(privateData, ...arguments);
+            return search(_d, ...arguments);
         }
 
         /**
@@ -351,7 +450,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object[]>}
          */
         static searchKue() {
-            return searchKue(privateData, ...arguments);
+            return searchKue(_d, ...arguments);
         }
 
         //============================================================
@@ -369,7 +468,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Flow}
          */
         beginChain() {
-            return begin.call(this, privateData, ...arguments);
+            return begin.call(this, _d, ...arguments);
         }
 
         /**
@@ -383,7 +482,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Flow}
          */
         flow() {
-            return flow.call(this, privateData, ...arguments);
+            return flow.call(this, _d, ...arguments);
         }
 
         /**
@@ -396,7 +495,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Flow}
          */
         execF() {
-            return execF.call(this, privateData, ...arguments);
+            return execF.call(this, _d, ...arguments);
         }
 
         /**
@@ -408,7 +507,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<Flow>}
          */
         cancel() {
-            return instance_cancel.call(this, privateData, ...arguments);
+            return instance_cancel.call(this, _d, ...arguments);
         }
 
         /**
@@ -429,7 +528,12 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<Flow>}
          */
         endChain() {
-            return end.call(this, privateData, ...arguments)
+            return end.call(this, _d, ...arguments)
+        }
+
+
+        save() {
+            return save.call(this, _d, ...arguments);
         }
 
     }
@@ -440,11 +544,11 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     //
     //============================================================
 
-    if (privateData.o.returnJobOnEvents) {
+    if (_d.o.returnJobOnEvents) {
         // Setup queue logging events
-        privateData.queue
+        _d.queue
             .on('job enqueue', (id, type) => {
-                privateData.Logger.info(`[${type}][${id}] - QUEUED`);
+                _d.Logger.info(`[${type}][${id}] - QUEUED`);
 
                 // Take all of Kue's passed arguments and emit them ourselves with the same event string
                 Flow.events.emit('job enqueue', ...arguments);
@@ -469,8 +573,8 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
                 });
             })
             .on('job failed', (id, errorMessage) => {
-                privateData.Logger.error(`[${id}] - FAILED`);
-                privateData.Logger.error(`[${id}] - ${errorMessage}`);
+                _d.Logger.error(`[${id}] - FAILED`);
+                _d.Logger.error(`[${id}] - ${errorMessage}`);
 
                 Flow.events.emit('job failed', ...arguments);
                 kue.Job.get(id, (err, job) => {
@@ -513,9 +617,9 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         ;
     }
     else {
-        privateData.queue
+        _d.queue
             .on('job enqueue', (id, type) => {
-                privateData.Logger.info(`[${type}][${id}] - QUEUED`);
+                _d.Logger.info(`[${type}][${id}] - QUEUED`);
                 Flow.events.emit('job enqueue', ...arguments);
             })
             .on('job complete', (id, result) => {
@@ -524,8 +628,8 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
                 Flow.events.emit('job complete', ...arguments);
             })
             .on('job failed', (id, errorMessage) => {
-                privateData.Logger.error(`[${id}] - FAILED`);
-                privateData.Logger.error(`[${id}] - ${errorMessage}`);
+                _d.Logger.error(`[${id}] - FAILED`);
+                _d.Logger.error(`[${id}] - ${errorMessage}`);
                 Flow.events.emit('job failed', ...arguments);
             })
             .on('job promotion', () => {

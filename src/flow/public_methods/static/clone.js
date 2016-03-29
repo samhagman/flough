@@ -1,4 +1,5 @@
 const _ = require('lodash');
+const Promise = require('bluebird');
 
 /**
  * Take an existing flow and start a copy of it
@@ -18,7 +19,7 @@ function clone(_d, UUID) {
             const newFlowData = _.omitBy(flowData.jobData, (value, key) => key.charAt(0) === '_');
 
             // start the flow with the new data
-            return _d.Flow.start(flowData.jobData._type, newFlowData, flowData.jobData._isChild)
+            return Promise.resolve(new _d.Flow(flowData.jobData._type, newFlowData));
         });
 }
 
