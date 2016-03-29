@@ -1,5 +1,6 @@
 const EventEmitter3 = require('eventemitter3');
 const _ = require('lodash');
+const Promise = require('bluebird');
 
 const privateData = new WeakMap();
 
@@ -46,7 +47,7 @@ class StrictMap extends EventEmitter3 {
      * 1. If the key has already been set, return the value associated with it.
      * 2. If the key has not already been set, return when the key is set to a value.
      * @param {string} key
-     * @param {callback} cb
+     * @param {callback} [cb]
      * @return {Promise}
      */
     get(key, cb) {
