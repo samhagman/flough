@@ -1,6 +1,10 @@
 const kue = require('kue');
 const events = require('events');
 const Promise = require('bluebird');
+Promise.config({
+    cancellation: true,
+    longStackTraces: true
+});
 const redis = require('redis');
 const express = require('express');
 
