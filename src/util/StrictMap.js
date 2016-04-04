@@ -21,7 +21,7 @@ class StrictMap extends EventEmitter3 {
         super();
 
         // Initialize this instance's private data
-        privateData.set(this, {});
+        privateData.set(this, new Map());
 
         // Set the initial keys
         Object.keys(initialMap).forEach(key => this.set(key, initialMap[ key ]));
@@ -80,7 +80,10 @@ class StrictMap extends EventEmitter3 {
      * @returns {*}
      */
     has(key) {
-        return privateData.get(this).has(key);
+        // Get this instance's private data
+        const privateDataMap = privateData.get(this);
+
+        return privateDataMap.has(key);
     }
 
     /**
