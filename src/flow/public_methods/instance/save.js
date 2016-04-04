@@ -4,14 +4,13 @@ const Promise = require('bluebird');
  * Proxy method for calling kueJob#save which makes Kue run the registered job
  * @method save
  * @memberOf Flow
- * @alias Flow#save
  * @public
  * @this Flow
  * @param {object} _d - Private Flow data
  * @param {function} [cb] - Optional callback interface
  * @returns {Flow}
  */
-function _save(_d, cb) {
+function save(_d, cb) {
 
     const _this = this;
 
@@ -126,8 +125,9 @@ function persistFlow(_d, jobData) {
     }
 }
 
-function rollBackPersist() {
+// TODO remove partially initialized Flows if there is an error
+// function rollBackPersist() {
+//
+// }
 
-}
-
-export default _save;
+export default save;
