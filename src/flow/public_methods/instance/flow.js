@@ -9,7 +9,7 @@ const _ = require('lodash');
  * @param {object} _d - Private Flow data
  * @param {number} step - The step in the chain to add this flow to
  * @param {string} type - The type of flow to add
- * @param {object|function} [flowData={}
+ * @param {object|function} [flowData={}]
  * @returns {Flow}
  */
 function flow(_d, step, type, flowData = {}) {
