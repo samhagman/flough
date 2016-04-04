@@ -7,15 +7,15 @@ const Promise = require('bluebird');
  * @public
  * @param {object} _d - Object holding private Flow class data
  * @param {string} type - The name of the flow type to register
- * @param {object} flowOptions - Object holding the options for registering this Flow type
+ * @param {object} [flowOptions] - Object holding the options for registering this Flow type
  * @param {function} flowFunc - Function that will be registered to run for this type
- * @param {function} dynamicPropFunc - A function that returns an object whose fields will be merged into the data for each
+ * @param {function} [dynamicPropFunc] - A function that returns an object whose fields will be merged into the data for each
  *      flow of this type at runtime.
  * @returns {Promise}
  */
 function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
 
-    const Logger = _d.Logger;
+    const { Logger } = _d;
 
     // Handle optional arguments
     if (arguments.length === 2) {
@@ -40,23 +40,6 @@ function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
     // Save the job options for this kind of flow
     _d.jobOptions[ type ] = flowOptions;
 
-    /**
-     * Starts a new FlowController Instance and then wraps User's flow function in promise and injects parameters
-     * into it.
-     * @param {object} flowInstance - Instance of Flow class representing this flow
-     * @returns {bluebird|exports|module.exports}
-     */
-    const flowWrapper = function(flowInstance) {
-
-        return new Promise((resolve, reject) => {
-
-            flowFunc(flowInstance, resolve, reject);
-
-        });
-
-    };
-
-
     // TODO allow the user to set the job concurrency of flows and jobs at registration time
     /**
      * This is the number of this type of job that will be run simultaneously before the next added job is queued
@@ -65,48 +48,68 @@ function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
     let jobProcessingConcurrency = 50;
 
     // This tells the Kue queue how to handle flow type jobs.
-    _d.queue.process(`flow:${type}`, jobProcessingConcurrency, (job, done) => {
+    _d.queue.process(`flow:${type}`, jobProcessingConcurrency, (kueJob, done) => {
 
         //Logger.info(`Starting: flowInstance:${flowName}`);
-        //logger.debug(job.data);
-
-        const getFlowInstance = _d.flowInstances.get(job.data._uuid);
+        //logger.debug(kueJob.data);
 
         // If in devMode do not catch errors, let process crash
         if (_d.o.devMode) {
-            getFlowInstance
-                .then(flowInstance => {
-                    return flowWrapper(flowInstance)
-                        .then(result => _d.setFlowResult(flowInstance, result))
-                        .tap(result => Logger.info(`[${job.type}][${flowInstance.uuid}][${job.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`))
-                        .then(result => done(null, result))
-                })
+            runFlow(_d, kueJob, flowFunc)
                 .catch(err => {
                     if (err.stack) Logger.error(err.stack);
                     else {
                         Logger.error(JSON.stringify(err));
                     }
+
                     done(err);
                 })
+                .then(result => done(null, result))
             ;
+
         }
         // In production mode catch errors to prevent crashing
         else {
-            getFlowInstance
-                .then(flowInstance => {
-                    return flowWrapper(flowInstance)
-                        .then(result => _d.setFlowResult(flowInstance, result))
-                        .then(result => done(null, result))
-                })
+            runFlow(_d, kueJob, flowFunc)
                 .catch(err => done(err))
+                .then(result => done(null, result))
             ;
-
         }
 
     });
 
     return Promise.resolve();
 
+}
+
+/**
+ * Startup a Flow by either retrieving its already initialized instance and running the registered function, or by
+ * creating a new Flow instance and then running the registered function.
+ * @param {object} _d - Object holding private Flow class data
+ * @param {Job} kueJob - Job created by the Kue library
+ * @param {function} flowFunc - The function that was registered for this job
+ * @returns {Promise.<*>}
+ */
+function runFlow(_d, kueJob, flowFunc) {
+
+    let flowInstanceProm = _d.flowInstances.has(kueJob.data._uuid)
+            ? _d.flowInstances.get(kueJob.data).timeout(10000)
+            : _d.flowInstances
+        .get(kueJob.data._uuid)
+        .timeout(1000)
+        .catchReturn(Promise.TimeoutError, new _d.Flow(kueJob.data._type, kueJob.data).save());
+
+    return flowInstanceProm
+        .then(flowInstance => _d.updateJobId(flowInstance, kueJob))
+        .then(() => {
+            return new Promise((resolve, reject) => {
+                flowFunc(flowInstanceProm, resolve, reject);
+            });
+        })
+        .then(result => _d.setFlowResult(flowInstanceProm, result))
+        .tap(result => {
+            _d.Logger.info(`[${kueJob.type}][${flowInstanceProm.uuid}][${kueJob.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`);
+        });
 }
 
 export default register;
