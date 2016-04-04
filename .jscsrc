@@ -39,8 +39,6 @@
   "requireSpacesInForStatement": true,
   "requireSpaceBetweenArguments": true,
   "requireCurlyBraces": [
-    "if",
-    "else",
     "for",
     "while",
     "do",
@@ -63,11 +61,9 @@
     "typeof"
   ],
   "requirePaddingNewlinesBeforeKeywords": [
-    "if",
     "for",
     "while",
     "do",
-    "switch",
     "case",
     "try"
   ],
