@@ -19,7 +19,7 @@ const _ = require('lodash');
  * @param {object} _d - Private Flow data
  * @returns {Promise.<Flow>}
  */
-function end(_d) {
+function endChain(_d) {
 
     const _this = this;
     const Logger = _d.Logger;
@@ -252,4 +252,4 @@ function end(_d) {
     });
 }
 
-export default end;
+export default endChain;
