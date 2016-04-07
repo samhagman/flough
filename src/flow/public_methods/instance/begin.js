@@ -13,7 +13,7 @@ const _ = require('lodash');
 function beginChain(_d, promiseArray = []) {
 
     const _this = this;
-    const Logger = _d.Logger;
+    const { Logger } = _d;
 
     // Attach User passed promises to resolve before any flow.job()s run.
     _this.promised[ '0' ].concat(promiseArray);
@@ -23,9 +23,6 @@ function beginChain(_d, promiseArray = []) {
     _this.promised[ '0' ].push(new Promise((resolve, reject) => {
 
         try {
-
-            // Listen for any cancellation event made by routes
-            _d.FloughInstance.once(`CancelFlow:${_this.uuid}`, _this.cancel.bind(_this));
 
             // Validate this is a valid MongoId
             if (_d.FlowModel.isObjectId(_this.uuid)) {
@@ -51,7 +48,12 @@ function beginChain(_d, promiseArray = []) {
                             _this.stepsTaken = flowDoc.stepsTaken;
                             _this.substepsTaken = flowDoc.substepsTaken;
                             _this.ancestors = flowDoc.ancestors;
-                            resolve(_this);
+
+                            // Update everywhere that this Flow is now a parent
+                            this.isParent = true;
+                            return _d.FlowModel.findByIdAndUpdate(_this.UUID, { isParent: true })
+                                .exec()  // return a full-fledged promise from Mongoose
+                                .then(() => resolve(_this));
                         }
                         else {
                             return reject(new Error(`[${_this.uuid}] Something went very very wrong when beginning Flow...`));
@@ -63,7 +65,8 @@ function beginChain(_d, promiseArray = []) {
                 return reject(new Error(`[${_this.uuid}] uuid passed to Flow.start() is not a valid ObjectId.`));
             }
 
-        } catch (err) {
+        }
+        catch (err) {
             Logger.error(err.stack);
 
             return reject(err);

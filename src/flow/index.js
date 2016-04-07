@@ -189,7 +189,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @default
          * @type {boolean}
          */
-        isParent = true;
+        isParent = false;
 
         /**
          * Whether or not this flow instance has completed.
