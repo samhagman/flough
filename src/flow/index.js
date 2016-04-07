@@ -2,7 +2,6 @@ const Promise = require('bluebird');
 const kue = require('kue');
 const _ = require('lodash');
 const util = require('util');
-const crypto = require('crypto');
 const EventEmitter3Class = require('eventemitter3');
 const StrictMap = require('../util/StrictMap');
 
@@ -38,6 +37,8 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
 
     /**
      * Private Data - Internal to Flow - A.K.A. _d
+     * @alias Flow~privateData
+     * @protected
      * @namespace
      * @prop {object} queue
      * @prop {object} mongoCon
@@ -56,7 +57,6 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
      * @prop {function} completeStep
      * @prop {function} handleChild
      * @prop {function} updateAncestors
-     * @prop {function} updateJobId
      */
     const _d = {
         queue:            queue,
@@ -78,7 +78,6 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     _d.completeStep = require('./private_methods/completeStep').bind(null, _d);
     _d.handleChild = require('./private_methods/handleChild').bind(null, _d);
     _d.updateAncestors = require('./private_methods/updateAncestors').bind(null, _d);
-    _d.updateJobId = require('./private_methods/updateJobId').bind(null, _d);
 
     /**
      * @class Flow
@@ -92,6 +91,13 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @type {EventEmitter}
          */
         static events = new EventEmitter3Class();
+
+        /**
+         * The data given to the Flow constructor to build this flow instance
+         * @instance
+         * @type {object}
+         */
+        givenData;
 
         /**
          * Raw Mongoose Connection to MongoDB
@@ -145,16 +151,16 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         /**
          * The number of steps that this flow has taken so far
          * @instance
-         * @type {number}
+         * @type {number|null}
          */
-        stepsTaken;
+        stepsTaken = null;
 
         /**
          * The number of substeps that have been taken at the current step
          * @instance
-         * @type {Array}
+         * @type {Array|null}
          */
-        substepsTaken;
+        substepsTaken = null;
 
         /**
          * The prefix to use for logging strings.
@@ -202,12 +208,12 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         isCancelled = false;
 
         /**
-         * Whether or not this flow has been restarted
+         * Whether or not this flow has had flow#build called on it yet.
          * @instance
          * @default
-         * @type {boolean}
+         * @type {null|Promise.<Flow>}
          */
-        isRestarted = false;
+        buildPromise = null;
 
         /**
          * This will hold a counter of how many substeps have been added for a given step, which allows us to
@@ -220,9 +226,9 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * Holds the flowJob information of each flowJob
          * @example { '1': {'1': { data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 1's RESULT STR' }, '2': {
              *     data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
-         * @type {object}
+         * @type {object|null}
          */
-        ancestors = {};
+        ancestors = null;
 
         /**
          * Holds jobs that are currently running for this Flow
@@ -251,119 +257,28 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
 
         /**
          * Starts a Flow by attaching extra fields to the User passed data and running Kue's queue.create()
-         * @param {string} flowType - Type of flow to construct
+         * @param {string} type - Type of flow to construct
          * @param {object} [givenData={}] - Data context to be attached to this Flow
          */
-        constructor(flowType, givenData = {}) {
+        constructor(type, givenData = {}) {
             // Apply EventEmitter3 instance properties
             super();
 
-            const Logger = _d.Logger;
+            const _this = this;
 
-            //============================================================
-            //
-            //                     SETUP FLOW DATA
-            //
-            //============================================================
+            const { Logger } = _d;
 
-            // Get the job options that were registered to this flow type
-            const jobOptions = _d.jobOptions[ flowType ];
-
-            // Get the field names that should not be saved into Kue (and stringified)
-            const noSaveFieldNames = jobOptions.noSave || [];
-
-            // Group data into what should be persisted to Redis/Mongo and data that shouldn't, but is attached later
-            const { dataToAttach, dataToPersist} = _.groupBy(givenData, (value, key) => {
-                return _.includes(noSaveFieldNames, key) ? 'dataToAttach' : 'dataToPersist';
-            });
-
-            // Set type of flow
-            dataToPersist._type = flowType;
-
-            // Set flowData properties to default values if needed
-            if (!dataToPersist._stepsTaken) dataToPersist._stepsTaken = -1;
-            if (!dataToPersist._substepsTaken) dataToPersist._substepsTaken = [];
-            if (!dataToPersist._parentUUID) dataToPersist._parentUUID = 'NoFlow';
-            if (!dataToPersist._parentType) dataToPersist._parentType = 'NoFlow';
-            if (!dataToPersist._ancestors) dataToPersist._ancestors = {};
-            dataToPersist._isChild = !!dataToPersist._isChild;
-
-            // Get the dynamicPropertyFunc that was registered to this flow type
-            const dynamicPropFunc = _d.dynamicPropFuncs[ flowType ];
-            if (!_.isFunction(dynamicPropFunc)) {
-                Logger.error(`Dynamic property passed was not a function for job type ${flowType}`);
-                Logger.error(util.inspect(dynamicPropFunc));
-                throw new Error('Dynamic property passed was not a function.');
-            }
-
-            // Build dynamic properties and merge them into the given data
-            let dynamicProperties = dynamicPropFunc(dataToPersist);
-            let mergedProperties = _.merge(dataToPersist, dynamicProperties);
-
-            // If there is no passed UUID, then create one
-            if (!mergedProperties._uuid) {
-
-                // Set _isRestarted to false since we are creating a new UUID
-                mergedProperties._isRestarted = false;
-
-                const randomStr = 'xxxxxxxxxxxxxxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                    const r = crypto.randomBytes(1)[ 0 ] % 16 | 0;
-                    const v = c == 'x' ? r : (r & 0x3 | 0x8).toString(16);
-                    return v.toString(16);
-                });
-                mergedProperties._uuid = (new ObjectId(randomStr)).toString();
-            }
-            else {
-                // Set _isRestarted to true since there was an existing UUID that has been passed
-                mergedProperties._isRestarted = true;
-            }
-
-            //============================================================
-            //
-            //             ASSIGN FLOW DATA TO NEEDED LOCATIONS
-            //
-            //============================================================
-
-            // Save the instance of this flow so the register function can inject this instance that was created here
-            _d.flowInstances.set(mergedProperties._uuid, this);
-
-            // Set the data that should be persisted when/if flow#save is called
-            _d.toBePersisted.set(this, mergedProperties);
-
-            // Construct the kueJob for this flow
-            const kueJob = _d.queue.create(`flow:${flowType}`, mergedProperties);
-
-            // Setup Flow's properties
-            this.data = _.merge(kueJob.data, _.pick(dataToPersist, noSaveFieldNames));
-            this.mongoCon = mongoCon;
-            this.kueJob = kueJob;
-            this.jobId = kueJob.id;
-            this.type = kueJob.type;
-            this.uuid = kueJob.data._uuid;
-            this.parentUUID = kueJob.data._parentUUID;
-            this.stepsTaken = kueJob.data._stepsTaken;
-            this.substepsTaken = kueJob.data._substepsTaken;
-            this.isRestarted = kueJob.data._isRestarted;
-            this.isChild = kueJob.data._isChild;
-            this.loggerPrefix = `[${this.type}][${this.uuid}][${this.kueJob.id}]`;
+            //TODO explain
+            _this.givenData = givenData;
+            _this.type = type;
 
             // This is a logger that will log messages both to the flowJob itself (flowJob.log) but also to persistent storage
             this.flowLogger = require('../util/flowLogger')(mongoCon, Logger);
 
-            //============================================================
-            //
-            //      SETUP PROXYING OF KUE EVENTS ONTO FLOW INSTANCE
-            //
-            //============================================================
 
-            // Emit any events from the kue job on this instance as well
-            kueJob.on('enqueue', () => this.emit('enqueue', ...arguments));
-            kueJob.on('promotion', () => this.emit('promotion', ...arguments));
-            kueJob.on('progress', () => this.emit('progress', ...arguments));
-            kueJob.on('failed attempt', () => this.emit('failed attempt', ...arguments));
-            kueJob.on('failed', () => this.emit('failed', ...arguments));
-            kueJob.on('complete', () => this.emit('complete', ...arguments));
-            kueJob.on('remove', () => this.emit('remove', ...arguments));
+            // TODO implement and document
+            // Listen for any cancellation event made by routes
+            //_d.FloughInstance.once(`CancelFlow:${_this.uuid}`, _this.cancel.bind(_this));
         }
 
         //============================================================
