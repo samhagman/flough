@@ -50,8 +50,8 @@ function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
     // This tells the Kue queue how to handle flow type jobs.
     _d.queue.process(`flow:${type}`, jobProcessingConcurrency, (kueJob, done) => {
 
-        //Logger.info(`Starting: flowInstance:${flowName}`);
-        //logger.debug(kueJob.data);
+        Logger.info(`Starting: flowInstance:${kueJob.type}`);
+        Logger.debug(kueJob.data);
 
         // If in devMode do not catch errors, let process crash
         if (_d.o.devMode) {
@@ -92,23 +92,24 @@ function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
  */
 function runFlow(_d, kueJob, flowFunc) {
 
-    let flowInstanceProm = _d.flowInstances.has(kueJob.data._uuid)
-            ? _d.flowInstances.get(kueJob.data).timeout(10000)
-            : _d.flowInstances
-        .get(kueJob.data._uuid)
-        .timeout(1000)
-        .catchReturn(Promise.TimeoutError, new _d.Flow(kueJob.data._type, kueJob.data).save());
+    const flowUUID = kueJob.data._uuid;
+    const flowType = kueJob.data._type;
+
+    const flowInstanceProm = _d.flowInstances.has(flowUUID)
+        ? _d.flowInstances.get(flowUUID)
+        : new _d.Flow(flowType, kueJob.data).save()
+    ;
 
     return flowInstanceProm
-        .then(flowInstance => _d.updateJobId(flowInstance, kueJob))
         .then(() => {
             return new Promise((resolve, reject) => {
                 flowFunc(flowInstanceProm, resolve, reject);
             });
         })
         .then(result => _d.setFlowResult(flowInstanceProm, result))
+        .tap(() => _d.flowInstances.remove(flowUUID))
         .tap(result => {
-            _d.Logger.info(`[${kueJob.type}][${flowInstanceProm.uuid}][${kueJob.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`);
+            _d.Logger.info(`[${flowType}][${flowInstanceProm.uuid}][${kueJob.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`);
         });
 }
 
