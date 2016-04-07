@@ -102,7 +102,7 @@ function flow(_d, step, type, flowData = {}) {
                              * Start the flow.
                              */
 
-                            const flow = new _d.Flow(type, finalJobData);
+                            const flow = new Flow(type, finalJobData);
 
                             // When job is enqueued into Kue, relate the job to this flow.
                             let updateAncestorsPromise;
