@@ -35,7 +35,7 @@
     "esprima-fb": "^15001.1001.0-dev-harmony-fb",
     "express": "^4.12.3",
     "jade": "^1.11.0",
-    "jscs": "^2.2.1",
+    "jscs": "^2.11.0",
     "path": "^0.12.7"
   },
   "dependencies": {

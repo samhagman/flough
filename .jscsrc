@@ -19,13 +19,23 @@
     ","
   ],
   "disallowMixedSpacesAndTabs": true,
-  "disallowTrailingWhitespace": true,
   "disallowTrailingComma": true,
   "disallowYodaConditions": true,
   "disallowKeywords": [
     "with"
   ],
   "disallowMultipleVarDecl": true,
+  "disallowIdenticalDestructuringNames": true,
+  "disallowNewlineBeforeBlockStatements": true,
+  "disallowOperatorBeforeLineBreak": true,
+  "disallowParenthesesAroundArrowParam": true,
+  "disallowVar": true,
+  "requireMultiLineTernary": true,
+  "requireMatchingFunctionName": true,
+  "requireCapitalizedConstructorsNew": true,
+  "requireSpread": true,
+  "requireObjectDestructuring": true,
+  "requireSemicolons": true,
   "requireSpaceBeforeBlockStatements": true,
   "requireParenthesesAroundIIFE": true,
   "requireSpacesInConditionalExpression": true,
@@ -33,7 +43,6 @@
   "requireCommaBeforeLineBreak": true,
   "requireSpaceBeforeBinaryOperators": true,
   "requireSpaceAfterBinaryOperators": true,
-  "requireLineFeedAtFileEnd": true,
   "requireCapitalizedConstructors": true,
   "requireDotNotation": true,
   "requireSpacesInForStatement": true,
@@ -67,16 +76,6 @@
     "case",
     "try"
   ],
-  "requirePaddingNewLinesBeforeLineComments": {
-    "allExcept": "firstAfterCurly"
-  },
-  "requirePaddingNewLinesAfterBlocks": {
-    "allExcept": [
-      "inCallExpressions",
-      "inArrayExpressions",
-      "inProperties"
-    ]
-  },
   "requireLineBreakAfterVariableAssignment": true,
   "safeContextKeyword": "_this",
   "validateLineBreaks": "LF",
