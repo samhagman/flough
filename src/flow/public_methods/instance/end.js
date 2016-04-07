@@ -22,7 +22,7 @@ const _ = require('lodash');
 function endChain(_d) {
 
     const _this = this;
-    const Logger = _d.Logger;
+    const { Logger } = _d;
 
     /**
      * Removes related jobs that were not completed before.  This is run inside of endChain() because jobs use their
@@ -93,14 +93,10 @@ function endChain(_d) {
                         .all(subFlows.map(attachFlowProgress))
                         .then(docInfos => {
                             flowDoc.ancestors = _this.ancestors;
-                            flowDoc.save((err) => {
-                                if (err) {
-                                    reject(err);
-                                }
-                                else {
-                                    resolve();
-                                }
-                            });
+                            flowDoc.save(err => err
+                                ? reject(err)
+                                : resolve()
+                            );
                         })
                     ;
                 }
@@ -132,7 +128,7 @@ function endChain(_d) {
                         _this.stepsTaken = 0;
                     }
 
-                    flowDoc.save((err) => {
+                    flowDoc.save(err => {
                         if (err) {
                             reject(err);
                         }
@@ -152,7 +148,7 @@ function endChain(_d) {
         // 0.
         Promise.all(_this.promised[ '0' ])
 
-            // 1.
+        // 1.
             .then(cleanupAncestry)
 
             // Set stepsTaken to 0 if they were -1 (initialization is complete)
@@ -160,7 +156,7 @@ function endChain(_d) {
             .then(() => {
 
                 // 2.
-                let jobHandlerPromises = _this.flowHandlers.map((promiseReturner) => promiseReturner());
+                let jobHandlerPromises = _this.flowHandlers.map(promiseReturner => promiseReturner());
 
                 // Find largest step number attached to _this.promised
                 const lastStep = Math.max(...Object.keys(_this.promised).map(string => parseInt(string, 10)));
@@ -173,9 +169,7 @@ function endChain(_d) {
                         // Start running steps...
                         unpackPromises(1);
                     })
-                    .catch((err) => {
-                        reject(err);
-                    })
+                    .catch(err => reject(err))
                 ;
 
                 /**
@@ -201,9 +195,7 @@ function endChain(_d) {
 
                         // Initiate promises by calling the promise returning functions inside
                         // this.promised[step] = [func, ..., func]
-                        let promiseList = promiseReturners.map((promiseReturner) => {
-                            return promiseReturner(currentAncestors);
-                        });
+                        let promiseList = promiseReturners.map(promiseReturner => promiseReturner(currentAncestors));
 
                         // Check if this flow is being cancelled and cancel all the promises that were just
                         // started. Also do not call unpackPromises() again to stop this recursive loop
@@ -216,7 +208,7 @@ function endChain(_d) {
                             // Waits for all the promises that represent jobs to complete
                             Promise.all(promiseList)
 
-                                // After all the jobs at this step have completed
+                            // After all the jobs at this step have completed
                                 .then(() => {
 
                                     Logger.info(`${_this.loggerPrefix} FINISHED STEP: ${step}`);
@@ -229,10 +221,9 @@ function endChain(_d) {
                                     // Start this process again for the next step
                                     return unpackPromises(step + 1);
                                 })
-                                .catch((err) => {
+                                .catch(err => {
                                     Logger.error('Error unpacking promises:');
                                     Logger.error(err.stack);
-
                                     //throw new Error(err);
                                 })
                                 .done()
@@ -252,4 +243,4 @@ function endChain(_d) {
     });
 }
 
-export default endChain;
+export default Promise.method(endChain);
