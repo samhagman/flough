@@ -29,6 +29,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
 
     // Public Instance Methods
     const begin = require('./public_methods/instance/begin');
+    const build = require('./public_methods/instance/build');
     const end = require('./public_methods/instance/end');
     const execF = require('./public_methods/instance/execF');
     const flow = require('./public_methods/instance/flow');
@@ -576,6 +577,20 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          */
         endChain() {
             return end.call(this, _d, ...arguments);
+        }
+
+
+        /**
+         * Builds the `flow.data` and `flow.kueJob` objects in memory without saving to MongoDB and Redis, respectively.
+         * @method build
+         * @memberOf Flow
+         * @public
+         * @this Flow
+         * @param {object} _d - Private Flow data
+         * @returns {Promise.<Flow>}
+         */
+        build() {
+            return build.call(this, _d, ...arguments);
         }
 
         /**
