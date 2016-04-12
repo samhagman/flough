@@ -24,6 +24,9 @@ function endChain(_d) {
     const _this = this;
     const { Logger } = _d;
 
+    if (!_this.buildPromise) throw new Error('Cannot call `Flow#endChain` before `Flow#save`.');
+    if (!_this.isParent) throw new Error('Cannot call `Flow#endChain` before `Flow#beginChain`.');
+
     /**
      * Removes related jobs that were not completed before.  This is run inside of endChain() because jobs use their
      * uncompleted related jobs to reuse their UUIDs and/or uuids.

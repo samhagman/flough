@@ -15,11 +15,13 @@ const _ = require('lodash');
 function flow(_d, step, type, flowData = {}) {
 
     const _this = this;
-    const Logger = _d.Logger;
-    const Flow = _d.Flow;
+    const { Logger, Flow } = _d;
+
+    if (!_this.buildPromise) throw new Error('Cannot call `Flow#flow` before `Flow#save`.');
+    if (!_this.isParent) throw new Error('Cannot call `Flow#flow` before `Flow#beginChain`.');
 
     Promise.all(_this.promised[ '0' ])
-        .then((promised) => {
+        .then(promised => {
 
             let substep;
 
@@ -46,7 +48,7 @@ function flow(_d, step, type, flowData = {}) {
 
                 // .handleChild() will eventually determine when and if to run this job based on step, substep,
                 // and previous completion
-                return _d.handleChild(_this, step, substep, (currentAncestors) => {
+                return _d.handleChild(_this, step, substep, currentAncestors => {
                     return new Promise((flowResolve, flowReject) => {
                         try {
 

@@ -15,6 +15,8 @@ function beginChain(_d, promiseArray = []) {
     const _this = this;
     const { Logger } = _d;
 
+    if (_this.buildPromise === null) throw new Error('Cannot call `Flow#endChain` before `Flow#save` and `Flow#beginChain`.');
+
     // Attach User passed promises to resolve before any flow.job()s run.
     _this.promised[ '0' ].concat(promiseArray);
 

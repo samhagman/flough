@@ -22,6 +22,9 @@
 function execF(_d, step, promReturningFunc) {
     let _this = this;
 
+    if (!_this.buildPromise) throw new Error('Cannot call `Flow#execF` before `Flow#save`.');
+    if (!_this.isParent) throw new Error('Cannot call `Flow#execF` before `Flow#beginChain`.');
+
     if (_this.stepsTaken < step) {
 
         const promFunc = function() {
