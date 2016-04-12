@@ -44,15 +44,7 @@ function beginChain(_d, promiseArray = []) {
                         // Found the _id in Mongo, we are restarting a failed Flow
                         else if (flowDoc) {
 
-                            //Logger.info(`${_this.loggerPrefix} Restarting Flow...`);
-
-                            // Restart Flow with values that were saved to storage
-                            _this.stepsTaken = flowDoc.stepsTaken;
-                            _this.substepsTaken = flowDoc.substepsTaken;
-                            _this.ancestors = flowDoc.ancestors;
-
                             // Update everywhere that this Flow is now a parent
-                            this.isParent = true;
                             return _d.FlowModel.findByIdAndUpdate(_this.UUID, { isParent: true })
                                 .exec()  // return a full-fledged promise from Mongoose
                                 .then(() => resolve(_this));
@@ -74,6 +66,8 @@ function beginChain(_d, promiseArray = []) {
             return reject(err);
         }
     }));
+
+    _this.isParent = true;
 
     return _this;
 }
