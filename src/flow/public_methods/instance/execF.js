@@ -1,3 +1,5 @@
+const _ = require('lodash');
+
 /*
  * the exec function
  * Finished
@@ -29,9 +31,7 @@ function execF(_d, step, promReturningFunc) {
 
         const promFunc = function() {
 
-            let ancestors = _this.ancestors;
-
-            return promReturningFunc(ancestors);
+            return promReturningFunc(_.cloneDeep(_this.ancestors));
         };
 
         const stepStr = step.toString();
