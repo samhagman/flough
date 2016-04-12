@@ -8,7 +8,7 @@ const _ = require('lodash');
  * Results must match ALL specified parameters: jobIds, flowUUIDs, types
  * @method Flow.search
  * @public
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {Array} [jobIds] - Array of Kue job ids to match
  * @param {Array} [flowUUIDs] - Array of Flough flow UUIDs to match
  * @param {Array} [types] - Array of flow types to match

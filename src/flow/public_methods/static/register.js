@@ -5,7 +5,7 @@ const Promise = require('bluebird');
  * Register a new type of Flow
  * @method Flow.register
  * @public
- * @param {object} _d - Object holding private Flow class data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {string} type - The name of the flow type to register
  * @param {object} [flowOptions] - Object holding the options for registering this Flow type
  * @param {function} flowFunc - Function that will be registered to run for this type

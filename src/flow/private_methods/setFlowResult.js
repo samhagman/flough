@@ -4,7 +4,7 @@ const Promise = require('bluebird');
  * Set the result of an instance of Flow
  * @memberOf Flow
  * @protected
- * @param {object} _d - The Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {Flow} flowInstance - The instance of Flow to act upon
  * @param {*} result - The result of the child flow
  * @returns {Promise.<*>}

@@ -8,7 +8,7 @@ const _ = require('lodash');
  * - Adds the kueJob's results to the Flow instance and the Flow mongodb record
  * @memberOf Flow
  * @protected
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {Flow} flowInstance - Instance of Flow to act upon
  * @param {object} kueJob - Kue job for this child
  * @param {*} flowResult - The result of the child flow

@@ -3,7 +3,7 @@
  * Completely reset a flow so that it starts all over again from the originally provided data.
  * @method Flow.reset
  * @public
- * @param {object} _d - Object holding private Flow class data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {string} UUID - The UUID of a flow
  * @returns {Promise}
  */

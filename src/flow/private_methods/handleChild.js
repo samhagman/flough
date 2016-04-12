@@ -5,7 +5,7 @@ const _ = require('lodash');
  * Handles storing promise returning functions for a child flow at correct step in Flow instance
  * @memberOf Flow
  * @protected
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {Flow} flowInstance - The Flow instance to act upon
  * @param {number} step - The step the child flow was asked to run at by the user
  * @param {number} substep - The substep that the parent flow assigned to this child flow

@@ -5,7 +5,7 @@ const Promise = require('bluebird');
  * Restart a flow so it is re-initialized in memory and in Kue
  * @method Flow.restart
  * @public
- * @param {object} _d - Object holding private Flow class data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {string} UUID - The UUID of a flow
  * @returns {Promise.<Flow>}
  */

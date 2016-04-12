@@ -5,7 +5,7 @@ const util = require('util');
  * Takes information about a kueJob and persists it to mongo and updates instance
  * @memberOf Flow
  * @protected
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {Flow} flowInstance - The instance of Flow to act upon
  * @param {object} kueJob - A Kue job object
  * @param {number} step - the step of the flowInstance the ancestor should be inserted at

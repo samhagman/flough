@@ -7,7 +7,7 @@ const Promise = require('bluebird');
  * Cancel a particular Flow by UUID
  * @method Flow.cancel
  * @public
- * @param {object} _d - Object holding private Flow class data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {string} UUID - The UUID of a flow
  * @returns {Promise}
  */

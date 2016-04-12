@@ -16,7 +16,7 @@ const _ = require('lodash');
  * @method Flow#execF
  * @public
  * @this Flow
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {number} step - The step in the flow chain to add this function to
  * @param {function} promReturningFunc - Function to add to flow chain -- must return a Promise
  * @returns {Flow}

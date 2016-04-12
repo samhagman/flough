@@ -6,7 +6,7 @@ const _ = require('lodash');
  * @method Flow#beginChain
  * @public
  * @this Flow
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {Promise[]} [promiseArray=[]] - Array of promises to resolve before first job of flow will run, not necessarily before the .beginChain() will run.
  * @returns {Flow}
  */

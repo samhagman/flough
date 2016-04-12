@@ -25,7 +25,7 @@ function getSearch(redisClient) {
  * Takes space separated query string and performs full text search on the Kue queue with them.
  * @method Flow.searchKue
  * @public
- * @param {object} _d - Private Flow object
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {string} query - Text to search within job keys and values
  * @param {boolean} [union=false] - If true, call .type('or') on search query, this changes default of "and" for
  * multiple items.

@@ -6,7 +6,7 @@ const _ = require('lodash');
  * also resets the substepsTaken to [] on both the Mongo doc and the flow instance as well.
  * @memberOf Flow
  * @protected
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {Flow} flowInstance - The Flow instance to act upon
  * @param {number} step - The step that is being completed
  * @returns {Promise}

@@ -16,7 +16,7 @@ const _ = require('lodash');
  * @method Flow#endChain
  * @public
  * @this Flow
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @returns {Promise.<Flow>}
  */
 function endChain(_d) {

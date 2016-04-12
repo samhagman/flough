@@ -5,7 +5,7 @@ const Promise = require('bluebird');
  * Take an existing flow and start a copy of it
  * @method Flow.clone
  * @public
- * @param {object} _d - Object holding private Flow class data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {string} UUID - The UUID of a flow
  * @returns {Promise.<object>} - A flow instance
  */

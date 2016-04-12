@@ -8,7 +8,7 @@ const Promise = require('bluebird');
  * @memberOf Flow
  * @alias Flow.rollback
  * @public
- * @param {object} _d - Object holding private Flow class data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {string} UUID - The UUID of a flow
  * @param {number} stepNumber - The step number to rollback to
  * @returns {Promise}

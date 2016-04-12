@@ -5,7 +5,7 @@ const Promise = require('bluebird');
  * @method Flow#cancel
  * @public
  * @this Flow
- * @param {object} _d - Private Flow data
+ * @param {Flow~privateData} _d - Private Flow data
  * @param {object} [cancellationData] - Data to be sent along with the cancellation event
  * @returns {Promise.<Flow>}
  */
