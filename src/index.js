@@ -2,7 +2,7 @@ const kue = require('kue');
 const events = require('events');
 const Promise = require('bluebird');
 Promise.config({
-    cancellation: true,
+    cancellation:    true,
     longStackTraces: true
 });
 const redis = require('redis');
@@ -108,15 +108,21 @@ function setupDefaults(o) {
  */
 function setupRedis(FloughAPI) {
     let o = FloughAPI.o;
-    FloughAPI.o.redis.type = FloughAPI.o.redis.type ? FloughAPI.o.redis.type : 'default';
+    FloughAPI.o.redis.type = FloughAPI.o.redis.type
+        ? FloughAPI.o.redis.type
+        : 'default';
     let redisClient;
 
     // If user has passed Redis options
     if (o.redis && o.redis.type === 'supplyOptions') {
         try {
             let socket = o.redis.socket;
-            let port = socket ? null : (o.redis.port || 6379);
-            let host = socket ? null : (o.redis.host || '127.0.0.1');
+            let port = socket
+                ? null
+                : (o.redis.port || 6379);
+            let host = socket
+                ? null
+                : (o.redis.host || '127.0.0.1');
             redisClient = redis.createClient(socket || port, host, o.redis.options);
 
             if (o.redis.auth) {
@@ -165,15 +171,11 @@ function setupStorage(FloughAPI) {
 
     switch (o.storage.type) {
         case 'mongoose' || 'mongodb':
-        {
             FloughAPI.storageClient = require('./storage/mongodb')(o);
             return FloughAPI.storageClient;
-        }
 
         default:
-        {
             throw new Error(`Invalid storage type (options.storage.type): ${o.storage.type}`);
-        }
     }
 }
 
@@ -322,33 +324,25 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
 
             switch (type) {
                 case 'inactive':
-                {
                     numInactiveJobsProcessed += 1;
                     break;
-                }
 
                 case 'active':
-                {
                     numActiveJobsProcessed += 1;
                     break;
-                }
 
                 case 'failed':
-                {
                     numFailedJobsProcessed += 1;
                     break;
-                }
 
                 default:
-                {
                     resolve(queue);
                     break;
-                }
             }
 
-            if (numActiveJobs === numActiveJobsProcessed &&
-                numInactiveJobs === numInactiveJobsProcessed &&
-                numFailedJobs === numFailedJobsProcessed
+            if (numActiveJobs === numActiveJobsProcessed
+                && numInactiveJobs === numInactiveJobsProcessed
+                && numFailedJobs === numFailedJobsProcessed
             ) {
                 resolve(queue);
             }
@@ -362,7 +356,7 @@ function setupKue({ logger, searchKue, cleanKueOnStartup, jobEvents, redis, expr
             queue.inactive((err, inactiveJobIds) => {
                 queue.active((err, activeJobIds) => {
                     queue.failed((err, failedJobIds) => {
-                        cleanupJobs(inactiveJobIds, activeJobIds, failedJobIds)
+                        cleanupJobs(inactiveJobIds, activeJobIds, failedJobIds);
                     });
                 });
 

@@ -62,7 +62,7 @@ export default function jobAPIBuilder(queue, mongoCon, FloughInstance) {
         const cancelJob = function(job, data = {}) {
             FloughInstance.emit(`CancelFlow:${job.data._flowId}`, data);
             Logger.error(`[${job.type}][${job.data._uuid}][${job.id}] Cancelling job.`);
-            job.log('Job cancelled by parent flow.');
+            job.log('Flow cancelled by parent flow.');
             job.failed();
         };
 

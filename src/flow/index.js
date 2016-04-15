@@ -223,9 +223,9 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         substeps = {};
 
         /**
-         * Holds the flowJob information of each flowJob
-         * @example { '1': {'1': { data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 1's RESULT STR' }, '2': {
-             *     data: {//flowJob.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
+         * Holds the flow information of each flow
+         * @example { '1': {'1': { data: {//flow.data fields//}, result: 'STEP 1, SUBSTEP 1's RESULT STR' }, '2': {
+             *     data: {//flow.data fields//}, result: 'STEP 1, SUBSTEP 2's RESULT STR' } } }
          * @type {object|null}
          */
         ancestors = null;
@@ -237,7 +237,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         activeChildren = [];
 
         /**
-         * This holds an array of functions, which return promises, which resolve when the flowJob has been all setup
+         * This holds an array of functions, which return promises, which resolve when the flow has been all setup
          * and registered on the flow instance properly (in this.promised) and now are just waiting to be initiated
          * by the unpackPromises function (check .endChain() for more)
          * @type {Array}
@@ -246,7 +246,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
 
         /**
          * This is the step map that is created by all the functions in this.jobHandlers.  Each key corresponds to
-         * a step and holds an array of functions that when called will start the flowJob (by adding a flowJob to the Kue
+         * a step and holds an array of functions that when called will start the flow (by adding a flow to the Kue
          * queue)
          * @type {object.<string, function[]>}
          */
@@ -272,13 +272,13 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
             _this.givenData = givenData;
             _this.type = type;
 
-            // This is a logger that will log messages both to the flowJob itself (flowJob.log) but also to persistent storage
+            // This is a logger that will log messages both to the flow itself (flow.log) but also to persistent storage
             this.flowLogger = require('../util/flowLogger')(mongoCon, Logger);
 
 
             // TODO implement and document
             // Listen for any cancellation event made by routes
-            //_d.FloughInstance.once(`CancelFlow:${_this.uuid}`, _this.cancel.bind(_this));
+            _this.once(`CancelFlow:${_this.uuid}`, _this.cancel.bind(_this));
         }
 
         //============================================================

@@ -56,7 +56,7 @@ function beginChain(_d, promiseArray = []) {
                 ;
             }
             else {
-                return reject(new Error(`[${_this.uuid}] uuid passed to Flow.start() is not a valid ObjectId.`));
+                return reject(new Error(`[${_this.uuid}] uuid passed to Flow#begin is not a valid ObjectId.`));
             }
 
         }

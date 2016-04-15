@@ -16,9 +16,9 @@ function save(_d) {
     const _this = this;
 
     let buildFlowData = _this.buildPromise !== null
-        ? _this.buildPromise  // If Flow#build already called by user, just wait for it to finish
-        : _this.build()       // If Flow#build
-    ;
+            ? _this.buildPromise  // If Flow#build already called by user, just wait for it to finish
+            : _this.build()       // If Flow#build
+        ;
 
     return buildFlowData.then(() => {
 
