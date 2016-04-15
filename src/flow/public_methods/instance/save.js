@@ -46,7 +46,8 @@ function saveToMongoDB(_d, flowInstance) {
     const { Logger, FlowModel } = _d;
 
     // Look for the passed uuid, if found => restart flow, if not => create a new flow record
-    return FlowModel.findById(flowInstance.uuid)
+    return FlowModel
+        .findById(flowInstance.uuid)
         .then((flowDoc, err) => {
 
             // Handle error
@@ -60,14 +61,14 @@ function saveToMongoDB(_d, flowInstance) {
             else if (!flowDoc) {
 
                 //Logger.info(`${_this.loggerPrefix} Creating new Flow in Mongo...`);
-                return FlowModel.create(
-                    {
+                return FlowModel
+                    .create({
                         _id:           flowInstance.uuid,
                         type:          flowInstance.type,
                         jobId:         flowInstance.jobId,
                         stepsTaken:    flowInstance.stepsTaken,
                         substepsTaken: flowInstance.substepsTaken,
-                        jobData:       {},
+                        data:          flowInstance.data,
                         isParent:      true,
 
                         // Reinitialize with related jobs if this is a helper flow

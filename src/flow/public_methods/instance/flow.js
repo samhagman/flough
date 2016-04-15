@@ -76,7 +76,7 @@ function flow(_d, step, type, flowData = {}) {
                             finalJobData._type = type;
 
                             // Reuse the previous uuid if there is one.
-                            finalJobData._uuid = _.get(currentAncestors, `${step}.${substep}.jobData._uuid`, null);
+                            finalJobData._uuid = _.get(currentAncestors, `${step}.${substep}.data._uuid`, null);
 
                             // Reinitialize flow with the correct steps/substeps taken.
                             finalJobData._stepsTaken = _.get(currentAncestors, `${step}.${substep}._stepsTaken`, null);

@@ -25,7 +25,7 @@ export default function FlowSchemaBuilder(mongoose) {
             stepsTaken:    { type: Number, required: true, default: -1 },
             substepsTaken: { type: Array, required: false, default: [] },
             totalSteps:    { type: Number, required: false },
-            jobData:       { type: Schema.Types.Mixed, required: true },
+            data:          { type: Schema.Types.Mixed, required: true },
             ancestors:     { type: Schema.Types.Mixed, required: true },
             logs:          [ FlowLogSchema ],
             childLogs:     [ ChildLogSchema ],
