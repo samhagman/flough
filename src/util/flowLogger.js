@@ -42,8 +42,6 @@ function flowLoggerFactory(mongoCon, Logger) {
 
         if (UUID) {
             let kueJobId = jobId || null;
-            console.log('**************', UUID);
-            //
             FlowModel.findById(UUID)
                 .then((flowDoc, err) => {
                     if (err) {
@@ -59,9 +57,11 @@ function flowLoggerFactory(mongoCon, Logger) {
 
                         logToKueJob(kueJobId, timeStampedMsg);
 
+                        // Logger.error(flowDoc.toJSON());
+
                         // Push message into the flow doc's job logs
-                        flowDoc.jobLogs.push({
-                            step:    flowDoc.step,
+                        flowDoc.logs.push({
+                            step:    flowDoc.stepsTaken,
                             message: timeStampedMsg
                         });
 
