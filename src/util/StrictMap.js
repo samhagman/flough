@@ -16,7 +16,7 @@ class StrictMap extends EventEmitter3 {
      * @constructor
      * @param {object} [initialMap={}] - Keys and values to instantiate StrictMap
      */
-    constructor(initialMap) {
+    constructor(initialMap = {}) {
         // Initialize the parent constructor
         super();
 
