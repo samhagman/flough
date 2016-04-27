@@ -13,6 +13,10 @@ export default function({storage, logger}) {
     if (storage.type === 'mongodb') {
         mongoose = require('mongoose');
 
+        // Set bluebird as Promise library
+        mongoose.Promise = require('bluebird');
+        storage.options.promiseLibrary = require('bluebird');
+
         // Connect to Mongo.
         connection = mongoose.createConnection(
             storage.uri,
@@ -21,6 +25,10 @@ export default function({storage, logger}) {
     }
     else if (storage.type === 'mongoose') {
         mongoose = storage.mongoose;
+
+        // Set bluebird as Promise library
+        mongoose.Promise = require('bluebird');
+
         connection = storage.connection;
     }
     else {
