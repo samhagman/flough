@@ -2,6 +2,7 @@ const Promise = require('bluebird');
 const _ = require('lodash');
 const util = require('util');
 const crypto = require('crypto');
+const ObjectId = require('mongoose').Types.ObjectId;
 
 /**
  * Builds the `flow.data` and `flow.kueJob` objects in memory without saving to MongoDB and Redis, respectively.
@@ -9,10 +10,11 @@ const crypto = require('crypto');
  * @memberOf Flow
  * @public
  * @this Flow
- * @param {Flow~privateData} _d - Private Flow data
+ * @param {PrivateFlowData} _d - Private Flow data
+ * @param {object} buildOptions - Options for building the Flow
  * @returns {Promise.<Flow>}
  */
-function build(_d) {
+function build(_d, buildOptions = {}) {
 
     // Set instance's buildPromise and start building
     this.buildPromise = new Promise((resolve, reject) => {
@@ -21,21 +23,38 @@ function build(_d) {
 
         //============================================================
         //
+        //               CHECK FOR INVALID FLOWS
+        //
+        //============================================================
+
+        // The 'noSave' option is only available for use with flows started with Flow#flow (unless in a test env)
+        if (_d.flowOptions[ _this.type ].noSave && !buildOptions.isTest) throw new Error(`Cannot use 'noSave' option with parent Flows`);
+
+        //============================================================
+        //
         //                     SETUP FLOW DATA
         //
         //============================================================
 
+        // If this is a test Flow, add that property to the data
+        if (buildOptions.isTest) _this.givenData._isTest = true;
+
         // Get the job options that were registered to this flow type
-        const jobOptions = _d.jobOptions[ _this.type ];
+        const flowOptions = _d.flowOptions[ _this.type ];
 
         // Get the field names that should not be saved into Kue (and stringified)
-        const noSaveFieldNames = jobOptions.noSave || [];
+        const noSaveFieldNames = flowOptions.noSave || [];
 
         // Group data into what should be persisted to Redis/Mongo and data that shouldn't, but is attached later
-        const { dataToAttach, dataToPersist } = _.groupBy(_this.givenData, (value, key) => {
-            return _.includes(noSaveFieldNames, key)
-                ? 'dataToAttach'
-                : 'dataToPersist';
+        let dataToAttach = {};
+        let dataToPersist = {};
+        _.forOwn(_this.givenData, (value, key) => {
+            if (_.includes(noSaveFieldNames, key)) {
+                dataToAttach[ key ] = value;
+            }
+            else {
+                dataToPersist[ key ] = value;
+            }
         });
 
         // Set type of flow
@@ -59,7 +78,7 @@ function build(_d) {
 
         // Build dynamic properties and merge them into the given data
         let dynamicProperties = dynamicPropFunc(dataToPersist);
-        let mergedProperties = _.merge(dataToPersist, dynamicProperties);
+        let mergedProperties = Object.assign(dataToPersist, dynamicProperties);
 
         // If there is no passed UUID, then create one
         if (!mergedProperties._uuid) {
@@ -88,14 +107,14 @@ function build(_d) {
         //
         //============================================================
 
-        // Save the instance of this flow so the register function can inject this instance that was created here
-        _d.flowInstances.set(mergedProperties._uuid, _this);
-
         // Set the data that should be persisted when/if flow#save is called
         _d.toBePersisted.set(_this, mergedProperties);
 
+        // Set the data that shouldn't be saved, but should be reattached to the flowInstance after Flow#save
+        _d.toBeAttached.set(_this, dataToAttach);
+
         // Construct the kueJob for this flow
-        const kueJob = _d.queue.create(`flow:${_this.type}`, mergedProperties);
+        const kueJob = _d.queue.create(`${_this.type}`, mergedProperties);
 
         setupKueEventRelay(kueJob, _this);
 
@@ -103,14 +122,12 @@ function build(_d) {
         _this.data = _.merge(kueJob.data, _.pick(dataToPersist, noSaveFieldNames));
         _this.mongoCon = mongoCon;
         _this.kueJob = kueJob;
-        _this.jobId = kueJob.id;
+        _this.jobId = null;
         _this.type = kueJob.type;
         _this.uuid = kueJob.data._uuid;
         _this.parentUUID = kueJob.data._parentUUID;
         _this.isRestarted = kueJob.data._isRestarted;
         _this.isChild = kueJob.data._isChild;
-        _this.isParent = kueJob.data._isParent;
-        _this.loggerPrefix = `[${_this.type}][${_this.uuid}][${_this.kueJob.id}]`;
 
         _d.FlowModel.findById(_this.uuid)
             .then((flowDoc, err) => {
