@@ -533,105 +533,106 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     if (_d.o.returnJobOnEvents) {
         // Setup queue logging events
         _d.queue
-            .on('job enqueue', (id, type) => {
-                _d.Logger.info(`[${type}][${id}] - QUEUED`);
+          .on('job enqueue', (id, type) => {
+              _d.Logger.info(`[${type}][${id}] - QUEUED`);
 
-                // Take all of Kue's passed arguments and emit them ourselves with the same event string
-                Flow.events.emit('job enqueue', ...arguments);
+              // Take all of Kue's passed arguments and emit them ourselves with the same event string
+              Flow.events.emit('job enqueue', ...arguments);
 
-                // Retrieve the job with the given id and emit custom events with the job attached
-                kue.Job.get(id, (err, job) => {
-                    // Event prefixed by the job's uuid
-                    Flow.events.emit(`${job.data._uuid}:enqueue`, job);
+              // Retrieve the job with the given id and emit custom events with the job attached
+              kue.Job.get(id, (err, job) => {
+                  // Event prefixed by the job's uuid
+                  Flow.events.emit(`${job.data._uuid}:enqueue`, job);
 
-                    // Event prefixed by the job's type
-                    Flow.events.emit(`${job.type}:enqueue`, job);
-                });
-            })
-            .on('job complete', (id, result) => {
-                //privateData.Logger.info(`[${id}] - COMPLETE`);
-                //privateData.Logger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
+                  // Event prefixed by the job's type
+                  Flow.events.emit(`${job.type}:enqueue`, job);
+              });
+          });
 
-                Flow.events.emit('job complete', ...arguments);
-                kue.Job.get(id, (err, job) => {
-                    Flow.events.emit(`${job.data._uuid}:complete`, job);
-                    Flow.events.emit(`${job.type}:complete`, job);
-                });
-            })
-            .on('job failed', (id, errorMessage) => {
-                _d.Logger.error(`[${id}] - FAILED`);
-                _d.Logger.error(`[${id}] - ${errorMessage}`);
+        _d.queue.on('job complete', (id, result) => {
+            //privateData.Logger.info(`[${id}] - COMPLETE`);
+            //privateData.Logger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
 
-                Flow.events.emit('job failed', ...arguments);
-                kue.Job.get(id, (err, job) => {
-                    Flow.events.emit(`${job.data._uuid}:failed`, job);
-                    Flow.events.emit(`${job.type}:failed`, job);
-                });
-            })
-            .on('job promotion', (id) => {
-                Flow.events.emit('job promotion', ...arguments);
-                kue.Job.get(id, (err, job) => {
-                    Flow.events.emit(`${job.data._uuid}:promotion`, job);
-                    Flow.events.emit(`${job.type}:promotion`, job);
-                });
-            })
-            .on('job progress', (id) => {
-                Flow.events.emit('job progress', ...arguments);
-                kue.Job.get(id, (err, job) => {
-                    Flow.events.emit(`${job.data._uuid}:progress`, job);
-                    Flow.events.emit(`${job.type}:progress`, job);
-                });
-            })
-            .on('job failed attempt', (id) => {
-                Flow.events.emit('job failed attempt', ...arguments);
+            Flow.events.emit('job complete', ...arguments);
+            kue.Job.get(id, (err, job) => {
+                Flow.events.emit(`${job.data._uuid}:complete`, job);
+                Flow.events.emit(`${job.type}:complete`, job);
+            });
+        });
 
-                kue.Job.get(id, (err, job) => {
-                    Flow.events.emit(`${job.data._uuid}:failed attempt`, job);
-                    Flow.events.emit(`${job.type}:failed attempt`, job);
-                });
-            })
-            .on('job remove', (id) => {
-                Flow.events.emit('job remove', ...arguments);
-                kue.Job.get(id, (err, job) => {
-                    if (job) {
+        _d.queue.on('job failed', (id, errorMessage) => {
+            _d.Logger.error(`[${id}] - FAILED`);
+            _d.Logger.error(`[${id}] - ${errorMessage}`);
 
-                        Flow.events.emit(`${job.data._uuid}:remove`, job);
-                        Flow.events.emit(`${job.type}:remove`, job);
-                    }
-                });
-            })
+            Flow.events.emit('job failed', ...arguments);
+            kue.Job.get(id, (err, job) => {
+                Flow.events.emit(`${job.data._uuid}:failed`, job);
+                Flow.events.emit(`${job.type}:failed`, job);
+            });
+        });
+        _d.queue.on('job promotion', (id) => {
+            Flow.events.emit('job promotion', ...arguments);
+            kue.Job.get(id, (err, job) => {
+                Flow.events.emit(`${job.data._uuid}:promotion`, job);
+                Flow.events.emit(`${job.type}:promotion`, job);
+            });
+        });
+        _d.queue.on('job progress', (id) => {
+            Flow.events.emit('job progress', ...arguments);
+            kue.Job.get(id, (err, job) => {
+                Flow.events.emit(`${job.data._uuid}:progress`, job);
+                Flow.events.emit(`${job.type}:progress`, job);
+            });
+        });
+        _d.queue.on('job failed attempt', (id) => {
+            Flow.events.emit('job failed attempt', ...arguments);
+
+            kue.Job.get(id, (err, job) => {
+                Flow.events.emit(`${job.data._uuid}:failed attempt`, job);
+                Flow.events.emit(`${job.type}:failed attempt`, job);
+            });
+        });
+        _d.queue.on('job remove', (id) => {
+            Flow.events.emit('job remove', ...arguments);
+            kue.Job.get(id, (err, job) => {
+                if (job) {
+
+                    Flow.events.emit(`${job.data._uuid}:remove`, job);
+                    Flow.events.emit(`${job.type}:remove`, job);
+                }
+            });
+        })
         ;
     }
     else {
-        _d.queue
-            .on('job enqueue', (id, type) => {
-                _d.Logger.info(`[${type}][${id}] - QUEUED`);
-                Flow.events.emit('job enqueue', ...arguments);
-            })
-            .on('job complete', (id, result) => {
-                //privateData.Logger.info(`[${id}] - COMPLETE`);
-                //privateData.Logger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
-                Flow.events.emit('job complete', ...arguments);
-            })
-            .on('job failed', (id, errorMessage) => {
-                _d.Logger.error(`[${id}] - FAILED`);
-                _d.Logger.error(`[${id}] - ${errorMessage}`);
-                Flow.events.emit('job failed', ...arguments);
-            })
-            .on('job promotion', () => {
-                Flow.events.emit('job promotion', ...arguments);
-            })
-            .on('job progress', () => {
-                Flow.events.emit('job progress', ...arguments);
-            })
-            .on('job failed attempt', () => {
-                Flow.events.emit('job failed attempt', ...arguments);
-            })
-            .on('job remove', () => {
-                Flow.events.emit('job remove', ...arguments);
-            })
+        _d.queue.on('job enqueue', (id, type) => {
+            _d.Logger.info(`[${type}][${id}] - QUEUED`);
+            Flow.events.emit('job enqueue', ...arguments);
+        });
+        _d.queue.on('job complete', (id, result) => {
+            //privateData.Logger.info(`[${id}] - COMPLETE`);
+            //privateData.Logger.debug(`[${id}] - Result: ${JSON.stringify(result, null, 2)}`);
+            Flow.events.emit('job complete', ...arguments);
+        });
+        _d.queue.on('job failed', (id, errorMessage) => {
+            _d.Logger.error(`[${id}] - FAILED`);
+            _d.Logger.error(`[${id}] - ${errorMessage}`);
+            Flow.events.emit('job failed', ...arguments);
+        });
+        _d.queue.on('job promotion', () => {
+            Flow.events.emit('job promotion', ...arguments);
+        });
+        _d.queue.on('job progress', () => {
+            Flow.events.emit('job progress', ...arguments);
+        });
+        _d.queue.on('job failed attempt', () => {
+            Flow.events.emit('job failed attempt', ...arguments);
+        });
+        _d.queue.on('job remove', () => {
+            Flow.events.emit('job remove', ...arguments);
+        })
         ;
     }
 
     return Flow;
-}
+};
