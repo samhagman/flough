@@ -35,49 +35,134 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     const instance_cancel = require('./public_methods/instance/instance_cancel');
     const save = require('./public_methods/instance/save');
 
+    // Private Methods
+    const _setFlowResult = require('./private_methods/setFlowResult');
+    const _completeChild = require('./private_methods/completeChild');
+    const _completeStep = require('./private_methods/completeStep');
+    const _handleChild = require('./private_methods/handleChild');
+    const _updateAncestors = require('./private_methods/updateAncestors');
+
     /**
      * Private Data - Internal to Flow - A.K.A. _d
      * @alias Flow~privateData
      * @protected
-     * @namespace
-     * @prop {object} queue
-     * @prop {object} mongoCon
-     * @prop {object} o
-     * @prop {object} Logger
-     * @prop {object} FloughInstance
-     * @prop {object} FlowModel
-     * @prop {object} redisClient
-     * @prop {object} dynamicPropFuncs
-     * @prop {object} jobOptions
-     * @prop {StrictMap} flowInstances
-     * @prop {WeakMap} toBePersisted
-     * @prop {Flow} Flow
-     * @prop {function} setFlowResult
-     * @prop {function} completeChild
-     * @prop {function} completeStep
-     * @prop {function} handleChild
-     * @prop {function} updateAncestors
      */
-    const _d = {
-        queue:            queue,
-        mongoCon:         mongoCon,
-        o:                FloughInstance.o,
-        Logger:           this.o.logger.func,
-        FloughInstance:   FloughInstance,
-        FlowModel:        mongoCon.model('flow'),
-        redisClient:      redisClient,
-        dynamicPropFuncs: {},
-        jobOptions:       {},
-        flowInstances:    new StrictMap(),
-        toBePersisted:    new WeakMap(),
-        Flow:             Flow
-    };
+    class PrivateFlowData {
 
-    _d.setFlowResult = require('./private_methods/setFlowResult').bind(null, _d);
-    _d.completeChild = require('./private_methods/completeChild').bind(null, _d);
-    _d.completeStep = require('./private_methods/completeStep').bind(null, _d);
-    _d.handleChild = require('./private_methods/handleChild').bind(null, _d);
-    _d.updateAncestors = require('./private_methods/updateAncestors').bind(null, _d);
+        /**
+         * @static
+         * @type {object}
+         */
+        queue = queue;
+
+        /**
+         * @static
+         * @type {object}
+         */
+        mongoCon = mongoCon;
+
+        /**
+         * @static
+         * @type {object}
+         */
+        o = FloughInstance.o;
+
+        /**
+         * @static
+         * @type {object}
+         */
+        Logger = FloughInstance.o.logger.func;
+
+        /**
+         * @static
+         * @type {object}
+         */
+        FloughInstance = FloughInstance;
+
+        /**
+         * @static
+         * @type {object}
+         */
+        FlowModel = mongoCon.model('flow');
+
+        /**
+         * @static
+         * @type {object}
+         */
+        redisClient = redisClient;
+
+        /**
+         * @static
+         * @type {object}
+         */
+        dynamicPropFuncs = {};
+
+        /**
+         * @static
+         * @type {object}
+         */
+        flowOptions = {};
+
+        /**
+         * @static
+         * @type {StrictMap}
+         */
+        flowInstances = new StrictMap();
+
+        /**
+         * @static
+         * @type {WeakMap}
+         */
+        toBePersisted = new WeakMap();
+
+
+        /**
+         * @static
+         * @type {WeakMap}
+         */
+        toBeAttached = new WeakMap();
+
+        /**
+         * @instance
+         * @type {Flow|null}
+         */
+        Flow = null;
+
+        constructor() {
+        }
+
+        setFlowResult() {
+            return _setFlowResult(this, ...arguments);
+        }
+
+        completeChild() {
+            return _completeChild(this, ...arguments);
+        }
+
+        completeStep() {
+            return _completeStep(this, ...arguments);
+        }
+
+        handleChild() {
+            return _handleChild(this, ...arguments);
+        }
+
+        updateAncestors() {
+            return _updateAncestors(this, ...arguments);
+        }
+    }
+
+    let _d = new PrivateFlowData();
+
+    const getPrivateClassData = function getPrivateData(FlowClass) {
+        if (_d.Flow) {
+            return _d;
+        }
+        else {
+            _d.Flow = FlowClass;
+            return _d;
+        }
+    };
 
     /**
      * @class Flow
@@ -116,7 +201,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         /**
          * The id of the Kue job tracking this flow (kueJob.id)
          * @instance
-         * @type {number}
+         * @type {number|null}
          */
         jobId;
 
@@ -265,10 +350,15 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
             super();
 
             const _this = this;
-
+            const _d = getPrivateClassData(Flow);
             const { Logger } = _d;
 
-            //TODO explain
+            Logger.debug(type, givenData);
+
+            // If there is no flowOptions for the passed type, then this type has not been registered yet
+            if (_d.flowOptions[ type ] === undefined) throw new Error(`Flow type '${type}' has not been registered.`);
+
+            // TODO explain
             _this.givenData = givenData;
             _this.type = type;
 
@@ -300,6 +390,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise}
          */
         static register(type, flowOptions, flowFunc, dynamicPropFunc) {
+            const _d = getPrivateClassData(Flow);
             return register(_d, ...arguments);
         }
 
@@ -312,6 +403,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise}
          */
         static cancel(UUID) {
+            const _d = getPrivateClassData(Flow);
             return static_cancel(_d, ...arguments);
         }
 
@@ -327,6 +419,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise}
          */
         static rollback(UUID, stepNumber) {
+            const _d = getPrivateClassData(Flow);
             return rollback(_d, ...arguments);
         }
 
@@ -339,6 +432,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise}
          */
         static reset(UUID) {
+            const _d = getPrivateClassData(Flow);
             return reset(_d, ...arguments);
         }
 
@@ -351,6 +445,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<Flow>}
          */
         static restart(UUID) {
+            const _d = getPrivateClassData(Flow);
             return restart(_d, ...arguments);
         }
 
@@ -363,6 +458,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object>} - A flow instance
          */
         static clone(UUID) {
+            const _d = getPrivateClassData(Flow);
             return clone(_d, ...arguments);
         }
 
@@ -376,6 +472,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object[]>}
          */
         static status(UUID) {
+            const _d = getPrivateClassData(Flow);
             return status(_d, ...arguments);
         }
 
@@ -394,6 +491,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object[]>}
          */
         static search() {
+            const _d = getPrivateClassData(Flow);
             return search(_d, ...arguments);
         }
 
@@ -408,6 +506,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<object[]>}
          */
         static searchKue() {
+            const _d = getPrivateClassData(Flow);
             return searchKue(_d, ...arguments);
         }
 
@@ -427,6 +526,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Flow}
          */
         beginChain() {
+            const _d = getPrivateClassData(Flow);
             return begin.call(this, _d, ...arguments);
         }
 
@@ -442,6 +542,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Flow}
          */
         flow() {
+            const _d = getPrivateClassData(Flow);
             return flow.call(this, _d, ...arguments);
         }
 
@@ -456,6 +557,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Flow}
          */
         execF() {
+            const _d = getPrivateClassData(Flow);
             return execF.call(this, _d, ...arguments);
         }
 
@@ -469,6 +571,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<Flow>}
          */
         cancel() {
+            const _d = getPrivateClassData(Flow);
             return instance_cancel.call(this, _d, ...arguments);
         }
 
@@ -491,6 +594,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<Flow>}
          */
         endChain() {
+            const _d = getPrivateClassData(Flow);
             return end.call(this, _d, ...arguments);
         }
 
@@ -505,6 +609,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Promise.<Flow>}
          */
         build() {
+            const _d = getPrivateClassData(Flow);
             return build.call(this, _d, ...arguments);
         }
 
@@ -519,6 +624,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
          * @returns {Flow}
          */
         save() {
+            const _d = getPrivateClassData(Flow);
             return save.call(this, _d, ...arguments);
         }
 
