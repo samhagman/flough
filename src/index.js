@@ -20,36 +20,43 @@ export default function floughBuilder() {
     }
     else {
 
-        return {
-            // Initialize a Flough instance using the passed options
-            init(o) {
+        try {
+            return {
 
-                Flough = {};
+                // Initialize a Flough instance using the passed options
+                init(o) {
 
-                // Setup defaults
-                Flough.o = setupDefaults(o);
+                    Flough = {};
 
-                // Setup Kue queue
-                return setupKue(Flough.o)
+                    // Setup defaults
+                    Flough.o = setupDefaults(o);
 
-                // Setup and attach storage and Redis clients to Flough Class
-                    .then((queue) => [ queue, setupStorage(Flough), setupRedis(Flough) ])
-                    .spread((queue, storageClient, redisClient) => {
+                    // Setup Kue queue
+                    return setupKue(Flough.o)
 
-                        // Setup and attach the APIs for Flows and
-                        Flough.Flow = require('./flow')(queue, storageClient, redisClient, Flough);
+                    // Setup and attach storage and Redis clients to Flough Class
+                        .then((queue) => [ queue, setupStorage(Flough), setupRedis(Flough) ])
+                        .spread((queue, storageClient, redisClient) => {
 
-                        // Expose the kue library directly
-                        Flough.kue = kue;
+                            // Setup and attach the APIs for Flows and
+                            Flough.Flow = require('./flow')(queue, storageClient, redisClient, Flough);
 
-                        // Expose Kue queue
-                        Flough.queue = queue;
+                            // Expose the kue library directly
+                            Flough.kue = kue;
 
-                        return Flough;
-                    });
+                            // Expose Kue queue
+                            Flough.queue = queue;
 
-            }
-        };
+                            return Flough;
+                        });
+
+                }
+            };
+        }
+        catch (e) {
+            console.log('***');
+            console.log(e);
+        }
     }
 
 }
