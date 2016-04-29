@@ -20,7 +20,7 @@ const Joi = require('joi');
  */
 export default function search(_d, { jobId, UUID, type, isCompleted, isCancelled, kueActive }) {
 
-    const { Logger, flowModel } = _d;
+    const { Logger, FlowModel } = _d;
 
     return new Promise((resolve, reject) => {
 
@@ -63,7 +63,7 @@ export default function search(_d, { jobId, UUID, type, isCompleted, isCancelled
             searchOptions.type = { $in: castToArray(type) };
         }
 
-        flowModel.find(searchOptions, (err, flows) => {
+        FlowModel.find(searchOptions, (err, flows) => {
             if (err) {
                 Logger.error(err.stack);
                 reject(err);
