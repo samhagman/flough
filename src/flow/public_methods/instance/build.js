@@ -130,32 +130,32 @@ function build(_d, buildOptions = {}) {
         _this.isChild = kueJob.data._isChild;
 
         _d.FlowModel.findById(_this.uuid)
-            .then((flowDoc, err) => {
+          .then((flowDoc, err) => {
 
-                // Handle error
-                if (err) {
-                    Logger.error(`[${_this.uuid}] Error finding flowRecord in Flow#build \n\n ${err} \n\n ${flowDoc}`);
-                    reject(err);
-                }
-                // The passed _id wasn't found, this is a new Flow
-                else if (!flowDoc) {
+              // Handle error
+              if (err) {
+                  Logger.error(`[${_this.uuid}] Error finding flowRecord in Flow#build \n\n ${err} \n\n ${flowDoc}`);
+                  reject(err);
+              }
+              // The passed _id wasn't found, this is a new Flow
+              else if (!flowDoc) {
 
-                    resolve(_this);
-                }
+                  resolve(_this);
+              }
 
-                // Found the _id in Mongo, we are restarting a failed Flow
-                else if (flowDoc) {
+              // Found the _id in Mongo, we are restarting a failed Flow
+              else if (flowDoc) {
 
-                    //Logger.info(`${_this.loggerPrefix} Restarting Flow...`);
+                  //Logger.info(`${_this.loggerPrefix} Restarting Flow...`);
 
-                    // Restart Flow with values that were saved to storage
-                    _this.stepsTaken = flowDoc.stepsTaken;
-                    _this.substepsTaken = flowDoc.substepsTaken;
-                    _this.ancestors = flowDoc.ancestors;
+                  // Restart Flow with values that were saved to storage
+                  _this.stepsTaken = flowDoc.stepsTaken;
+                  _this.substepsTaken = flowDoc.substepsTaken;
+                  _this.ancestors = flowDoc.ancestors;
 
-                    resolve(_this);
-                }
-            })
+                  resolve(_this);
+              }
+          })
         ;
     });
 
