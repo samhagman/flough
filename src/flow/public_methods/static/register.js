@@ -18,19 +18,19 @@ function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
     const { Logger } = _d;
 
     // Handle optional arguments
-    if (arguments.length === 2) {
+    if (arguments.length === 3) {
         flowFunc = flowOptions;
         flowOptions = {};
         dynamicPropFunc = () => { return {}; };
     }
-    else if (arguments.length === 3) {
-        if (!_.isPlainObject(flowOptions)) {
+    else if (arguments.length === 4) {
+        if (_.isPlainObject(flowOptions)) {
+            dynamicPropFunc = (() => { return {}; });
+        }
+        else {
             dynamicPropFunc = flowFunc;
             flowFunc = flowOptions;
             flowOptions = {};
-        }
-        else {
-            dynamicPropFunc = (() => { return {}; });
         }
     }
 
