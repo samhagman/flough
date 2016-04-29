@@ -54,44 +54,26 @@ function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
         const flowType = kueJob.data._type;
         Logger.info(`Starting: flowInstance:${kueJob.type}`);
 
-        // If in devMode do not catch errors, let process crash
-        if (_d.o.devMode) {
-            runFlow(_d, kueJob, flowFunc)
-                .then(result => {
-                    return Promise.try(() => done(null, result));
-                })
-                .catch(err => {
-                    if (err.stack) Logger.error(err.stack);
-                    else {
-                        Logger.error(JSON.stringify(err));
-                    }
+        const runFlowProm = runFlow(_d, kueJob, flowFunc);
 
-                    return Promise.try(() => done(err));
-                })
-                .tap(result => {
-                    Logger.info(`[${flowType}][${flowUUID}][${kueJob.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`);
-                })
-            ;
+        runFlowProm
+            .then(result => {
+                return Promise.try(() => done(null, result)).return(result);
+            })
+            .catch(err => {
+                if (err.stack) Logger.error(err.stack);
+                else {
+                    Logger.error(JSON.stringify(err));
+                }
 
-        }
-        // In production mode catch errors to prevent crashing
-        else {
-            runFlow(_d, kueJob, flowFunc)
-                .then(result => {
-                    return Promise.try(() => done(null, result));
-                })
-                .catch(err => {
-                    if (err.stack) Logger.error(err.stack);
-                    else {
-                        Logger.error(JSON.stringify(err));
-                    }
+                done(err);
 
-                    return Promise.try(() => done(err));
-                })
-                .tap(result => {
-                    Logger.info(`[${flowType}][${flowUUID}][${kueJob.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`);
-                });
-        }
+                return runFlowProm.cancel();
+            })
+            .then(result => {
+                Logger.info(`[${flowType}][${flowUUID}][${kueJob.id}] COMPLETE - RESULT: ${JSON.stringify(result, null, 2)}`);
+            })
+        ;
 
     });
 
@@ -112,20 +94,22 @@ function runFlow(_d, kueJob, flowFunc) {
     const { Logger } = _d;
     const flowUUID = kueJob.data._uuid;
     const flowType = kueJob.data._type;
-    
+    let flowInstance;
+
     const flowInstanceProm = _d.flowInstances.has(flowUUID)
             ? _d.flowInstances.get(flowUUID)
             : new _d.Flow(flowType, kueJob.data).save({ isTest: kueJob.data._isTest })
         ;
 
     return flowInstanceProm
-        .then((flowInstance) => {
+        .then((intFlowInstance) => {
+            flowInstance = intFlowInstance;
             return new Promise((resolve, reject) => {
-                flowFunc(flowInstance, resolve, reject);
+                flowFunc(intFlowInstance, resolve, reject);
             });
         })
-        .then(result => _d.setFlowResult(flowInstanceProm, result))
-        .then(Promise.try(() => _d.flowInstances.remove(flowUUID)));
+        .then(result => _d.setFlowResult(flowInstance, result))
+        .then(result => Promise.try(() => _d.flowInstances.remove(flowUUID)).return(result));
 
 }
 
