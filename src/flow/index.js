@@ -178,6 +178,13 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
         static events = new EventEmitter3Class();
 
         /**
+         * Logs messages for a flow
+         * @static
+         * @type {flowLogger}
+         */
+        static flowLogger = require('../util/flowLogger')(mongoCon, _d.Logger);
+
+        /**
          * The data given to the Flow constructor to build this flow instance
          * @instance
          * @type {object}
@@ -363,8 +370,7 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
             _this.type = type;
 
             // This is a logger that will log messages both to the flow itself (flow.log) but also to persistent storage
-            this.flowLogger = require('../util/flowLogger')(mongoCon, Logger);
-
+            _this.flowLogger = require('../util/flowLogger')(mongoCon, Logger);
 
             // TODO implement and document
             // Listen for any cancellation event made by routes
