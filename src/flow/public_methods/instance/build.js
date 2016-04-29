@@ -170,13 +170,13 @@ function setupKueEventRelay(kueJob, _this) {
     //============================================================
 
     // Emit any events from the kue job on this instance as well
-    kueJob.on('enqueue', () => _this.emit('enqueue', ...arguments));
-    kueJob.on('promotion', () => _this.emit('promotion', ...arguments));
-    kueJob.on('progress', () => _this.emit('progress', ...arguments));
-    kueJob.on('failed attempt', () => _this.emit('failed attempt', ...arguments));
-    kueJob.on('failed', () => _this.emit('failed', ...arguments));
-    kueJob.on('complete', () => _this.emit('complete', ...arguments));
-    kueJob.on('remove', () => _this.emit('remove', ...arguments));
+    kueJob.on('enqueue', function() { _this.emit('enqueue', ...arguments); });
+    kueJob.on('promotion', function() { _this.emit('promotion', ...arguments); });
+    kueJob.on('progress', function() { _this.emit('progress', ...arguments); });
+    kueJob.on('failed attempt', function() { _this.emit('failed attempt', ...arguments); });
+    kueJob.on('failed', function() { _this.emit('failed', ...arguments); });
+    kueJob.on('complete', function() { _this.emit('complete', ...arguments); });
+    kueJob.on('remove', function() { _this.emit('remove', ...arguments); });
 }
 
 // Wrap method in Bluebird .method function
