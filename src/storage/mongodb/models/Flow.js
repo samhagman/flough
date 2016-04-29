@@ -2,31 +2,31 @@ export default function FlowSchemaBuilder(mongoose) {
     let Schema = mongoose.Schema;
 
     const ChildLogSchema = new Schema({
-        jobId:      { type: Number, require: true },
-        step:       { type: Number, require: true },
-        personHuid: { type: String, require: true },
+        jobId:      { type: Number, required: true },
+        step:       { type: Number, required: true },
+        personHuid: { type: String, required: true },
         message:    { type: String, required: true },
         createdOn:  { type: Date, default: Date.now }
     }, { _id: false });
 
     const FlowLogSchema = new Schema({
-        step:      { type: Number, require: true },
+        step:      { type: Number, required: true },
         message:   { type: String, required: true },
         createdOn: { type: Date, default: Date.now }
     }, { _id: false });
 
     const FlowSchema = new Schema({
             uuid:          { type: String, required: true },
-            type:          { type: String, required: false },
+            type:          { type: String, required: true },
             jobId:         { type: Number, required: true },
             phase:         { type: String, default: 'NoPhase', required: true },
             parentUUID:    { type: String, default: 'NoFlow', required: true },
             parentType:    { type: String, default: 'NoFlow', required: true },
-            stepsTaken:    { type: Number, required: true, default: -1 },
-            substepsTaken: { type: Array, required: false, default: [] },
+            stepsTaken:    { type: Number, required: true },
+            substepsTaken: { type: Array, default: [], required: false },
             totalSteps:    { type: Number, required: false },
-            data:          { type: Schema.Types.Mixed, required: true },
-            ancestors:     { type: Schema.Types.Mixed, required: true },
+            data:          { type: Schema.Types.Mixed },
+            ancestors:     { type: Schema.Types.Mixed },
             logs:          [ FlowLogSchema ],
             childLogs:     [ ChildLogSchema ],
             isParent:      { type: Boolean, required: true, default: false },
