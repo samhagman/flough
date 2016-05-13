@@ -33,7 +33,7 @@ export default function search(_d, { jobId, UUID, type, isCompleted, isCancelled
             kueActive:   Joi.bool()
         });
 
-        const validResult = Joi.validate([ ...arguments ][ 1 ], searchSchema, { abortEarly: false, convert: false });
+        const validResult = Joi.validate([ ...arguments ][ 1 ], searchSchema, { abortEarly: false, convert: true });
 
         if (validResult.error) {
             Logger.error('Error with Flow.search: \n' + validResult.error);
