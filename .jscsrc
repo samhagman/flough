@@ -28,7 +28,6 @@
   "disallowIdenticalDestructuringNames": true,
   "disallowNewlineBeforeBlockStatements": true,
   "disallowOperatorBeforeLineBreak": true,
-  "disallowParenthesesAroundArrowParam": true,
   "disallowVar": true,
   "requireMultiLineTernary": true,
   "requireMatchingFunctionName": true,
