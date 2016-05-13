@@ -82,6 +82,7 @@ function saveToMongoDB(_d, flowInstance) {
                             substepsTaken: flowInstance.substepsTaken || [],
                             data:          flowInstance.data,
                             isParent:      false,
+                            isStarted:     false,
 
                             // Reinitialize with related jobs if this is a helper flow
                             ancestors: flowInstance.ancestors || {},

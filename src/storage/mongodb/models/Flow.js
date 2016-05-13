@@ -33,6 +33,7 @@ export default function FlowSchemaBuilder(mongoose) {
             isCancelled:   { type: Boolean, required: true, default: false },
             isCompleted:   { type: Boolean, required: true, default: false },
             isRestarted:   { type: Boolean, required: true, default: false },
+            isStarted:     { type: Boolean, required: true, default: false },
             result:        { type: Schema.Types.Mixed, default: null, required: false }
         },
         { collection: 'flow' });

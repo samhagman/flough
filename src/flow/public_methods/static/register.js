@@ -98,14 +98,17 @@ function runFlow(_d, kueJob, flowFunc) {
 
     const flowInstanceProm = _d.flowInstances.has(flowUUID)
             ? _d.flowInstances.get(flowUUID)
-            : new _d.Flow(flowType, kueJob.data).save({ isTest: kueJob.data._isTest })
-        ;
+            : new _d.Flow(flowType, kueJob.data).save({ isTest: kueJob.data._isTest });
 
     return flowInstanceProm
         .then((intFlowInstance) => {
             flowInstance = intFlowInstance;
+
+            return _d.FlowModel.findByIdAndUpdate(flowUUID, { isStarted: true});
+        })
+        .then(() => {
             return new Promise((resolve, reject) => {
-                flowFunc(intFlowInstance, resolve, reject);
+                flowFunc(flowInstance, resolve, reject);
             });
         })
         .then(result => _d.setFlowResult(flowInstance, result))
