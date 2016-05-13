@@ -28,7 +28,9 @@ function build(_d, buildOptions = {}) {
         //============================================================
 
         // The 'noSave' option is only available for use with flows started with Flow#flow (unless in a test env)
-        if (_d.flowOptions[ _this.type ].noSave && !buildOptions.isTest) throw new Error(`Cannot use 'noSave' option with parent Flows`);
+        if (!_this.givenData._isChild && _d.flowOptions[ _this.type ].noSave && !buildOptions.isTest) {
+            throw new Error(`Cannot use 'noSave' option with parent Flows`);
+        }
 
         //============================================================
         //
