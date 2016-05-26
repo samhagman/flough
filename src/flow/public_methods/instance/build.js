@@ -115,8 +115,18 @@ function build(_d, buildOptions = {}) {
         // Set the data that shouldn't be saved, but should be reattached to the flowInstance after Flow#save
         _d.toBeAttached.set(_this, dataToAttach);
 
-        // Construct the kueJob for this flow
-        const kueJob = _d.queue.create(`${_this.type}`, mergedProperties);
+        let kueJob;
+
+        if (_this.kueJob) {
+            // Use the passed kueJob if this is a restart
+            kueJob = _this.kueJob;
+            _this.isRestarted = true;
+            _d.Logger.error(kueJob);
+        }
+        else {
+            // Construct the kueJob for this flow
+            kueJob = _d.queue.create(`${_this.type}`, mergedProperties);
+        }
 
         setupKueEventRelay(kueJob, _this);
 
@@ -124,40 +134,40 @@ function build(_d, buildOptions = {}) {
         _this.data = _.merge(kueJob.data, _.pick(dataToPersist, noSaveFieldNames));
         _this.mongoCon = mongoCon;
         _this.kueJob = kueJob;
-        _this.jobId = null;
+        _this.jobId = kueJob.id;
         _this.type = kueJob.type;
         _this.uuid = kueJob.data._uuid;
         _this.parentUUID = kueJob.data._parentUUID;
-        _this.isRestarted = kueJob.data._isRestarted;
+        _this.isRestarted = _this.isRestarted || kueJob.data._isRestarted;
         _this.isChild = kueJob.data._isChild;
 
         _d.FlowModel.findById(_this.uuid)
-          .then((flowDoc, err) => {
+            .then((flowDoc, err) => {
 
-              // Handle error
-              if (err) {
-                  Logger.error(`[${_this.uuid}] Error finding flowRecord in Flow#build \n\n ${err} \n\n ${flowDoc}`);
-                  reject(err);
-              }
-              // The passed _id wasn't found, this is a new Flow
-              else if (!flowDoc) {
+                // Handle error
+                if (err) {
+                    Logger.error(`[${_this.uuid}] Error finding flowRecord in Flow#build \n\n ${err} \n\n ${flowDoc}`);
+                    reject(err);
+                }
+                // The passed _id wasn't found, this is a new Flow
+                else if (!flowDoc) {
 
-                  resolve(_this);
-              }
+                    resolve(_this);
+                }
 
-              // Found the _id in Mongo, we are restarting a failed Flow
-              else if (flowDoc) {
+                // Found the _id in Mongo, we are restarting a failed Flow
+                else if (flowDoc) {
 
-                  //Logger.info(`${_this.loggerPrefix} Restarting Flow...`);
+                    //Logger.info(`${_this.loggerPrefix} Restarting Flow...`);
 
-                  // Restart Flow with values that were saved to storage
-                  _this.stepsTaken = flowDoc.stepsTaken;
-                  _this.substepsTaken = flowDoc.substepsTaken;
-                  _this.ancestors = flowDoc.ancestors;
+                    // Restart Flow with values that were saved to storage
+                    _this.stepsTaken = flowDoc.stepsTaken;
+                    _this.substepsTaken = flowDoc.substepsTaken;
+                    _this.ancestors = flowDoc.ancestors;
 
-                  resolve(_this);
-              }
-          })
+                    resolve(_this);
+                }
+            })
         ;
     });
 
