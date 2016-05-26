@@ -9,7 +9,7 @@
  */
 function reset(_d, UUID) {
 
-    return _d.Flow.rollback(UUID, -1);
+    return _d.Flow.rollback(UUID, 0);
 }
 
 export default reset;
