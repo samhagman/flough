@@ -12,7 +12,7 @@ const Promise = require('bluebird');
 function clone(_d, UUID) {
 
     // Get the flow's data
-    return _d.Flow.search({flowUUIDs: [UUID]})
+    return _d.Flow.search({UUID: [UUID]})
         .then(flowData => {
 
             // Create a copy of all data that isn't flough's private data ('_' prefixed)
