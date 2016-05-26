@@ -83,6 +83,7 @@ function saveToMongoDB(_d, flowInstance) {
                             data:          flowInstance.data,
                             isParent:      false,
                             isStarted:     false,
+                            isChild:       flowInstance.isChild,
 
                             // Reinitialize with related jobs if this is a helper flow
                             ancestors: flowInstance.ancestors || {},

@@ -30,6 +30,7 @@ export default function FlowSchemaBuilder(mongoose) {
             logs:          [ FlowLogSchema ],
             childLogs:     [ ChildLogSchema ],
             isParent:      { type: Boolean, required: true, default: false },
+            isChild:       { type: Boolean, required: true, default: false },
             isCancelled:   { type: Boolean, required: true, default: false },
             isCompleted:   { type: Boolean, required: true, default: false },
             isRestarted:   { type: Boolean, required: true, default: false },
