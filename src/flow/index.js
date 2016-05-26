@@ -360,10 +360,13 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
             const _d = getPrivateClassData(Flow);
             const { Logger } = _d;
 
-            Logger.debug(type, givenData);
-
             // If there is no flowOptions for the passed type, then this type has not been registered yet
             if (_d.flowOptions[ type ] === undefined) throw new Error(`Flow type '${type}' has not been registered.`);
+
+            if (givenData.kueJob) {
+                _this.kueJob = givenData.kueJob;
+                delete givenData.kueJob;
+            }
 
             // TODO explain
             _this.givenData = givenData;
@@ -645,21 +648,21 @@ export default function flowAPIBuilder(queue, mongoCon, redisClient, FloughInsta
     if (_d.o.returnJobOnEvents) {
         // Setup queue logging events
         _d.queue
-          .on('job enqueue', (id, type) => {
-              _d.Logger.info(`[${type}][${id}] - QUEUED`);
+            .on('job enqueue', (id, type) => {
+                _d.Logger.info(`[${type}][${id}] - QUEUED`);
 
-              // Take all of Kue's passed arguments and emit them ourselves with the same event string
-              Flow.events.emit('job enqueue', ...arguments);
+                // Take all of Kue's passed arguments and emit them ourselves with the same event string
+                Flow.events.emit('job enqueue', ...arguments);
 
-              // Retrieve the job with the given id and emit custom events with the job attached
-              kue.Job.get(id, (err, job) => {
-                  // Event prefixed by the job's uuid
-                  Flow.events.emit(`${job.data._uuid}:enqueue`, job);
+                // Retrieve the job with the given id and emit custom events with the job attached
+                kue.Job.get(id, (err, job) => {
+                    // Event prefixed by the job's uuid
+                    Flow.events.emit(`${job.data._uuid}:enqueue`, job);
 
-                  // Event prefixed by the job's type
-                  Flow.events.emit(`${job.type}:enqueue`, job);
-              });
-          });
+                    // Event prefixed by the job's type
+                    Flow.events.emit(`${job.type}:enqueue`, job);
+                });
+            });
 
         _d.queue.on('job complete', (id, result) => {
             //privateData.Logger.info(`[${id}] - COMPLETE`);
