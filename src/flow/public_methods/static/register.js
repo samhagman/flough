@@ -52,6 +52,7 @@ function register(_d, type, flowOptions, flowFunc, dynamicPropFunc) {
 
         const flowUUID = kueJob.data._uuid;
         const flowType = kueJob.data._type;
+
         Logger.info(`Starting: flowInstance:${kueJob.type}`);
 
         const runFlowProm = runFlow(_d, kueJob, flowFunc);
@@ -94,17 +95,22 @@ function runFlow(_d, kueJob, flowFunc) {
     const { Logger } = _d;
     const flowUUID = kueJob.data._uuid;
     const flowType = kueJob.data._type;
-    let flowInstance;
 
-    const flowInstanceProm = _d.flowInstances.has(flowUUID)
-            ? _d.flowInstances.get(flowUUID)
-            : new _d.Flow(flowType, kueJob.data).save({ isTest: kueJob.data._isTest });
+    let flowInstance;
+    let flowInstanceProm;
+
+    if (!_d.flowInstances.has(flowUUID)) {
+        flowInstanceProm = new _d.Flow(flowType, kueJob.data).save({ isTest: kueJob.data._isTest });
+    }
+    else {
+        flowInstanceProm = _d.flowInstances.get(flowUUID);
+    }
 
     return flowInstanceProm
         .then((intFlowInstance) => {
             flowInstance = intFlowInstance;
 
-            return _d.FlowModel.findByIdAndUpdate(flowUUID, { isStarted: true});
+            return _d.FlowModel.findByIdAndUpdate(flowUUID, { isStarted: true });
         })
         .then(() => {
             return new Promise((resolve, reject) => {
