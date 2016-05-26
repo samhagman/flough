@@ -34,18 +34,32 @@ function save(_d, buildOptions = {}) {
             // Save the instance of this flow so the register function can inject this instance that was created here
             _d.flowInstances.set(_this.data._uuid, _this);
 
-            // This actually triggers the Flow's registered function to start running
-            _this.kueJob.save(err => {
-                if (err) return reject(err);
+            if (_this.isRestarted) {
 
                 // Setup flow instance properties that require a kueJob id (which it gets after being .save()'d)
                 _this.jobId = _this.kueJob.id;
-                _this.loggerPrefix = `[${_this.type}][${_this.uuid}][${_this.kueJob.id}]`;
+                _this.loggerPrefix = `[${_this.type}][${_this.uuid}][${_this.jobId}]`;
 
                 return saveToMongoDB(_d, _this)
                     .then(() => resolve(_this))
                     .catch(err => reject(err));
-            });
+            }
+            else {
+
+                // This actually triggers the Flow's registered function to start running
+                _this.kueJob.save(err => {
+                    if (err) return reject(err);
+
+                    // Setup flow instance properties that require a kueJob id (which it gets after being .save()'d)
+                    _this.jobId = _this.kueJob.id;
+                    _this.loggerPrefix = `[${_this.type}][${_this.uuid}][${_this.kueJob.id}]`;
+
+                    return saveToMongoDB(_d, _this)
+                        .then(() => resolve(_this))
+                        .catch(err => reject(err));
+                });
+            }
+
 
         });
 
