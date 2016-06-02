@@ -18,7 +18,7 @@ function handleChild(_d, flowInstance, step, substep, flowRunner, restartFlow) {
     return new Promise((handleFlowResolve, handleFlowReject) => {
         const Logger = _d.Logger;
 
-        restartFlow = restartFlow ? restartFlow : (()=> Logger.debug(`${flowInstance.loggerPrefix} No restartFlow() passed.`));
+        restartFlow = restartFlow ? restartFlow : (()=> Logger.warn(`${flowInstance.loggerPrefix} No restartFlow() passed.`));
 
         //Logger.debug(`[${_this.uuid}] Handling step ${step}, substep ${substep}`);
 
