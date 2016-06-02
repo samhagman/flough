@@ -35,7 +35,7 @@ function updateAncestors(_d, flowInstance, kueJob, step, substep) {
         }, { new: true }, (err, flowDoc) => {
             if (err) {
                 Logger.error(`Error updating ancestors: ${err.stack}`);
-                Logger.debug(util.inspect(flowDoc, { depth: null, colors: true }));
+                // Logger.debug(util.inspect(flowDoc, { depth: null, colors: true }));
                 reject(kueJob);
             }
 
