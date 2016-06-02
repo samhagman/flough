@@ -7,7 +7,6 @@
     "dev": "node index.js",
     "start:mongodb": "mongod --replSet test --dbpath ./data/",
     "start:redis": "redis-server",
-    "prepublish": "npm run transpile",
     "transpile": "rm -drf lib/; node_modules/.bin/babel -d lib/ src/"
   },
   "main": "index.js",
@@ -47,7 +46,8 @@
     "joi": "^8.0.5",
     "kue": "^0.10.5",
     "lodash": "^4.0.0",
-    "mongoose": "^4.4.12",
+    "bson": "0.4.23",
+    "mongoose": "4.4.19",
     "redis": "^2.4.2",
     "reds": "^0.2.5"
   }
